@@ -226,11 +226,8 @@ Every push to `main` executes:
 ## 👤 Author
 
 **Haniff Kamal**
-* Degree: Computer Engineering (Graduate 2025)
-* Specialization: Audio Deepfake Detection & AI/ML Research
 * Focus: DevOps, Cloud Infrastructure & MLOps Engineering
 * Portfolio: [haniffkamal.my](https://haniffkamal.my)
-* GitHub: [@HaniffKamal](https://github.com/HaniffKamal)
 
 ---
 
