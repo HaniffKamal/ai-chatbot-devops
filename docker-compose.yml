@@ -1,71 +1,118 @@
+# ==============================================================================
+# Docker Compose: Local Development & Microservice Stack
+# ==============================================================================
+# Services:
+#   1. ollama:   Local LLM inference engine with native NVIDIA GPU pass-through
+#   2. backend:  FastAPI async microservice communicating with Ollama
+#   3. frontend: Nginx reverse proxy serving static HTML and routing /api/ requests
+# ==============================================================================
+
 services:
-  # -----------------------------------------------------------
-  # LLM Engine: Ollama with Native NVIDIA GPU Pass-Through
-  # -----------------------------------------------------------
+  # ----------------------------------------------------------------------------
+  # 1. LLM Engine: Ollama
+  # ----------------------------------------------------------------------------
   ollama:
     image: ollama/ollama:latest
     container_name: chatbot-ollama
-    restart: unless-stopped
+    restart: unless-stopped          # Automatically restart on failure or reboot
+
     ports:
-      - "11434:11434"
+      - "11434:11434"                # Expose Ollama API to host for direct inspection
+
     volumes:
+      # Persist downloaded LLM model weights (e.g. Llama 3.1 8B, 4.7GB)
+      # Without this volume, models would be deleted every time the container stops!
       - ollama_data:/root/.ollama
+
+    # Native NVIDIA GPU Pass-Through Configuration
+    # Uses nvidia-container-toolkit to grant container access to your RTX 3060 GPU
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: 1               # Number of GPUs to allocate
               capabilities: [gpu]
-    environment:
-      - OLLAMA_KEEP_ALIVE=24h
-    networks:
-      - chatbot-net
 
-  # -----------------------------------------------------------
-  # Backend API: FastAPI Asynchronous Microservice
-  # -----------------------------------------------------------
+    environment:
+      # Keep model loaded in GPU VRAM for 24 hours (prevents cold-start delays on subsequent requests)
+      - OLLAMA_KEEP_ALIVE=24h
+
+    networks:
+      - chatbot-net                  # Join the shared internal bridge network
+
+
+  # ----------------------------------------------------------------------------
+  # 2. Backend API: FastAPI Microservice
+  # ----------------------------------------------------------------------------
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: ./backend             # Path to backend source code
+      dockerfile: Dockerfile         # Uses multi-stage python:3.10-slim build
     container_name: chatbot-backend
     restart: unless-stopped
+
     ports:
-      - "8000:8000"
+      - "8000:8000"                  # Expose FastAPI API on port 8000
+
+    # Load environment variables from .env file (if present)
     env_file:
       - .env
+
+    # Fallback default values if .env file is missing or variables are unset
     environment:
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-llama3.1:8b}
-      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60.0}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}     # Internal Docker DNS name for Ollama
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-llama3.1:8b}         # Target model to query
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60.0}              # Timeout for LLM generation in seconds
+      - GROQ_API_KEY=${GROQ_API_KEY:-}                     # Optional cloud fallback API key
+
+    # Startup order: ensure Ollama container starts before the backend boots
     depends_on:
       - ollama
+
     networks:
       - chatbot-net
 
-  # -----------------------------------------------------------
-  # Reverse Proxy & Web Server: Nginx
-  # -----------------------------------------------------------
+
+  # ----------------------------------------------------------------------------
+  # 3. Web Server & Reverse Proxy: Nginx
+  # ----------------------------------------------------------------------------
   frontend:
-    image: nginx:alpine
+    image: nginx:alpine              # Lightweight Alpine Linux base image (~20MB)
     container_name: chatbot-frontend
     restart: unless-stopped
+
     ports:
-      - "80:80"
+      - "80:80"                      # Standard HTTP entrypoint for client browser
+
     volumes:
+      # Mount Nginx reverse proxy configuration (read-only)
       - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount portfolio static assets (HTML, CSS, JS) (read-only)
       - ./frontend:/usr/share/nginx/html:ro
+
+    # Ensure backend starts before Nginx forwards traffic
     depends_on:
       - backend
+
     networks:
       - chatbot-net
 
+
+# ==============================================================================
+# Persistent Named Volumes
+# ==============================================================================
 volumes:
+  # Managed Docker volume storing gigabytes of LLM model weights safely on disk
   ollama_data:
     name: chatbot_ollama_data
 
+
+# ==============================================================================
+# Isolated Bridge Network
+# ==============================================================================
 networks:
+  # User-defined bridge network providing automatic internal DNS name resolution
+  # (e.g. backend can ping 'http://ollama:11434' using service name as hostname)
   chatbot-net:
     driver: bridge
