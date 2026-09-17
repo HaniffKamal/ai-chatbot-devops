@@ -1,37 +1,36 @@
-# 🤖 AI Portfolio Chatbot & DevOps Pipeline
+# 🤖 AI Chatbot Microservice & MLOps Infrastructure Platform
 
 [![CI/CD Pipeline](https://github.com/HaniffKamal/ai-chatbot-devops/actions/workflows/deploy.yml/badge.svg)](https://github.com/HaniffKamal/ai-chatbot-devops/actions)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![FastAPI](https://img.shields.com/badge/FastAPI-0.111+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com)
 [![Ollama](https://img.shields.io/badge/Ollama-NVIDIA_GPU-black?style=flat&logo=ollama&logoColor=white)](https://ollama.ai)
 [![Terraform](https://img.shields.io/badge/Terraform-AWS_IaC-7B42BC?style=flat&logo=terraform&logoColor=white)](https://www.terraform.io)
 [![Ansible](https://img.shields.io/badge/Ansible-Automation-EE0000?style=flat&logo=ansible&logoColor=white)](https://www.ansible.com)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-DNS_%26_SSL-F38020?style=flat&logo=cloudflare&logoColor=white)](https://www.cloudflare.com)
 
-An enterprise-grade, containerized full-stack portfolio platform featuring an interactive AI assistant powered by **Retrieval-Augmented Generation (RAG)** and local/cloud LLM inference.
+An enterprise-grade, containerized AI Chatbot Microservice featuring **Retrieval-Augmented Generation (RAG)**, dual-engine LLM inference (Local Ollama GPU / Cloud Groq fallback), and a complete DevOps/MLOps delivery pipeline.
 
-This repository serves a dual purpose:
-1. **Interactive Portfolio:** A live website hosted at [`haniffkamal.my`](https://haniffkamal.my) allowing visitors and recruiters to interactively query my background, audio deepfake detection research, and engineering projects.
-2. **End-to-End DevOps / MLOps Showcase:** A comprehensive implementation of Infrastructure as Code (IaC), Configuration Management, Continuous Deployment, Container Security, and Observability.
+### Architectural Model: Decoupled Microservice
+This repository operates as an **independent, embeddable AI microservice**. It is designed to cleanly integrate with external frontends—specifically powering the interactive chatbot assistant on the master developer portfolio ([`haniffkamal.my`](https://haniffkamal.my)), which is hosted separately 24/7 on Cloudflare Pages.
 
 ---
 
 ## 🏛️ System Architecture
 
 ```
-                    ┌──────────────────────────────────────────────┐
-                    │              CLIENT BROWSER                  │
-                    └──────────────────────┬───────────────────────┘
-                                           │ HTTPS (Port 443)
-                                           ▼
+   [ Master Portfolio: haniffkamal.my ]        [ Localhost / Direct Client ]
+     (Hosted 24/7 on Cloudflare Pages)          (Standalone Web Client UI)
+                    │                                        │
+                    └───────────────────┬────────────────────┘
+                                        │ HTTPS / REST API
+                                        ▼
                     ┌──────────────────────────────────────────────┐
                     │             CLOUDFLARE EDGE                  │
-                    │   • DNS Management (haniffkamal.my)          │
-                    │   • Strict SSL/TLS Encryption                │
+                    │   • DNS & SSL Routing (api.haniffkamal.my)   │
                     │   • Origin Shield & DDoS Mitigation          │
-                    └──────────────────────┬───────────────────────┘
-                                           │ HTTP (Port 80)
-                                           ▼
+                    └───────────────────┬──────────────────────────┘
+                                        │ HTTP (Port 80)
+                                        ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 AWS CUSTOM VPC (ISOLATED)                              │
 │  ┌──────────────────────────────────────────────────────────────────────────────────┐  │
@@ -44,7 +43,7 @@ This repository serves a dual purpose:
 │  │  │  │   ┌──────────────┐     ┌──────────────┐     ┌─────────────────────┐  │  │  │  │
 │  │  │  │   │ Nginx Proxy  │────▶│ FastAPI API  │────▶│   Ollama Engine     │  │  │  │  │
 │  │  │  │   │  (Port 80)   │     │ (Port 8000)  │     │   (Port 11434)      │  │  │  │  │
-│  │  │  │   │ Static Web + │     │ Async Pool + │     │   Llama 3.1 8B      │  │  │  │  │
+│  │  │  │   │ Web Client + │     │ Async Pool + │     │   Llama 3.1 / 3.2   │  │  │  │  │
 │  │  │  │   │ Reverse Prox │     │ Embedded RAG │     │ (Local GPU / CPU)   │  │  │  │  │
 │  │  │  │   └──────────────┘     └──────┬───────┘     └──────────┬──────────┘  │  │  │  │
 │  │  │  │                               │                        │             │  │  │  │
@@ -91,7 +90,7 @@ This repository serves a dual purpose:
 
 | Domain | Technology | Purpose |
 |---|---|---|
-| **Frontend** | Vanilla HTML5 / CSS3 / ES6 | Fast, lightweight UI with interactive chat suggestions |
+| **Frontend** | Vanilla HTML5 / CSS3 / ES6 | Dedicated Chatbot UI & embeddable web widget |
 | **Reverse Proxy** | Nginx (`alpine`) | SSL termination point, static file serving, upstream proxying |
 | **Backend API** | FastAPI (`python:3.10-slim`) | Async HTTP connection pooling, RAG orchestration |
 | **LLM Engine** | Ollama (`llama3.1:8b`) | On-premise / containerized private LLM inference |
@@ -125,7 +124,7 @@ ai-chatbot-devops/
 │   ├── Dockerfile              # Multi-stage, non-root, slim Python build
 │   └── requirements.txt        # Production dependencies
 ├── frontend/
-│   ├── index.html              # Portfolio single-page layout with chat widget
+│   ├── index.html              # Dedicated Chatbot Web Client & Widget UI
 │   ├── style.css               # Modern dark-mode styling
 │   ├── script.js               # Async fetch client with suggestion pills
 │   └── nginx.conf              # Reverse proxy routing rules
