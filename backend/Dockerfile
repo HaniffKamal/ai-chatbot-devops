@@ -42,7 +42,9 @@ FROM python:3.10-slim AS runner
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/install/bin:$PATH" \
+    PYTHONPATH=""
+
+ENV PATH="/install/bin:$PATH" \
     PYTHONPATH="/install/lib/python3.10/site-packages:$PYTHONPATH"
 
 # Install 'curl' strictly for the container HEALTHCHECK instruction below
