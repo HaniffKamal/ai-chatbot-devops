@@ -63,11 +63,12 @@ WORKDIR /app
 # Copy installed Python packages from the builder stage (no compiler tools brought over)
 COPY --from=builder /install /install
 
-# Copy application source code
+# Copy application source code and knowledge base data
 COPY ./app /app/app
+COPY ./data /app/data
 
-# Change ownership of /app to the non-root user
-RUN chown -R appuser:appgroup /app
+# Ensure chroma_db directory exists and set ownership of /app to appuser
+RUN mkdir -p /app/chroma_db && chown -R appuser:appgroup /app
 
 # Switch to the non-root user
 USER appuser

@@ -66,6 +66,12 @@ services:
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60.0}              # Timeout for LLM generation in seconds
       - GROQ_API_KEY=${GROQ_API_KEY:-}                     # Optional cloud fallback API key
 
+    volumes:
+      # Mount knowledge base markdown files (read-only for live updates)
+      - ./backend/data:/app/data:ro
+      # Persist embedded ChromaDB vector storage
+      - chroma_data:/app/chroma_db
+
     # Startup order: ensure Ollama container starts before the backend boots
     depends_on:
       - ollama
@@ -106,6 +112,10 @@ volumes:
   # Managed Docker volume storing gigabytes of LLM model weights safely on disk
   ollama_data:
     name: chatbot_ollama_data
+
+  # Persistent ChromaDB vector database storage
+  chroma_data:
+    name: chatbot_chroma_data
 
 
 # ==============================================================================
