@@ -1,0 +1,16 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["backend"],
+  "typeCheckingMode": "basic",
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownArgumentType": false,
+  "reportAny": false,
+  "reportExplicitAny": false,
+  "reportUnusedCallResult": false,
+  "reportMissingTypeStubs": false,
+  "reportDeprecated": false,
+  "reportOptionalMemberAccess": false
+}
+

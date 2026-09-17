@@ -10,61 +10,71 @@
 #   5. Synthesizes a factual, grounded system prompt for the LLM.
 # ==============================================================================
 
-import os
 import glob
 import logging
-from typing import List, Dict, Any, Optional
+import os
+from typing import Any
 
-import httpx
 import chromadb
+import httpx
+from chromadb.api import ClientAPI
+from chromadb.api.models.Collection import Collection
+from chromadb.api.types import Embeddable, EmbeddingFunction, Metadata
 
 logger = logging.getLogger("chatbot-rag")
 
 
-class LocalOllamaEmbeddingFunction:
+class LocalOllamaEmbeddingFunction(EmbeddingFunction[Embeddable]):
     """
     Zero-overhead embedding function connecting directly to local Ollama.
     Bypasses slow external S3 downloads and leverages your NVIDIA RTX 3060 GPU.
     """
 
-    def __init__(self, host: str = "http://ollama:11434", model: str = "nomic-embed-text"):
+    def __init__(
+        self, host: str = "http://ollama:11434", model: str = "nomic-embed-text"
+    ):
         self.host = host.rstrip("/")
         self.model = model
 
-    def __call__(self, input: List[str]) -> List[List[float]]:
-        embeddings = []
-        with httpx.Client(base_url=self.host, timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+    def __call__(self, input: list[str]) -> list[list[float]]:
+        embeddings: list[list[float]] = []
+        with httpx.Client(
+            base_url=self.host, timeout=httpx.Timeout(60.0, connect=10.0)
+        ) as client:
             for text in input:
                 try:
-                    response = client.post("/api/embeddings", json={
-                        "model": self.model,
-                        "prompt": text
-                    })
+                    response = client.post(
+                        "/api/embeddings", json={"model": self.model, "prompt": text}
+                    )
                     response.raise_for_status()
                     embeddings.append(response.json()["embedding"])
                 except Exception as exc:
-                    logger.error("Failed to generate embedding for text '%s...': %s", text[:40], exc)
+                    logger.error(
+                        "Failed to generate embedding for text '%s...': %s",
+                        text[:40],
+                        exc,
+                    )
                     raise
         return embeddings
 
-    def embed_query(self, input: List[str]) -> List[List[float]]:
+    def embed_query(self, input: list[str]) -> list[list[float]]:
         return self.__call__(input)
 
-    def embed_documents(self, input: List[str]) -> List[List[float]]:
+    def embed_documents(self, input: list[str]) -> list[list[float]]:
         return self.__call__(input)
 
     @staticmethod
     def name() -> str:
         return "local_ollama"
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         return {"host": self.host, "model": self.model}
 
     @staticmethod
-    def build_from_config(config: Dict[str, Any]) -> "LocalOllamaEmbeddingFunction":
+    def build_from_config(config: dict[str, Any]) -> "LocalOllamaEmbeddingFunction":
         return LocalOllamaEmbeddingFunction(
             host=config.get("host", "http://ollama:11434"),
-            model=config.get("model", "nomic-embed-text")
+            model=config.get("model", "nomic-embed-text"),
         )
 
 
@@ -80,16 +90,16 @@ class RAGPipeline:
         data_dir: str = "/app/data",
         collection_name: str = "portfolio_knowledge",
         ollama_host: str = "http://ollama:11434",
-        embedding_model: str = "nomic-embed-text"
+        embedding_model: str = "nomic-embed-text",
     ):
         self.persist_dir = persist_dir
         self.data_dir = data_dir
         self.collection_name = collection_name
         self.ollama_host = ollama_host
         self.embedding_model = embedding_model
-        self.client: Optional[chromadb.PersistentClient] = None
-        self.collection = None
-        self.embedding_fn = None
+        self.client: ClientAPI | None = None
+        self.collection: Collection | None = None
+        self.embedding_fn: LocalOllamaEmbeddingFunction | None = None
 
     def initialize(self):
         """Initialize ChromaDB client and ingest knowledge base documents."""
@@ -98,8 +108,7 @@ class RAGPipeline:
 
         # Uses local Ollama GPU embeddings (nomic-embed-text)
         self.embedding_fn = LocalOllamaEmbeddingFunction(
-            host=self.ollama_host,
-            model=self.embedding_model
+            host=self.ollama_host, model=self.embedding_model
         )
 
         # In-process persistent ChromaDB instance
@@ -109,16 +118,18 @@ class RAGPipeline:
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
                 embedding_function=self.embedding_fn,
-                metadata={"description": "Haniff Kamal Portfolio Knowledge Base"}
+                metadata={"description": "Haniff Kamal Portfolio Knowledge Base"},
             )
         except ValueError as exc:
             if "Embedding function conflict" in str(exc):
-                logger.info("Resetting collection due to embedding function upgrade to local Ollama...")
+                logger.info(
+                    "Resetting collection due to embedding function upgrade to local Ollama..."
+                )
                 self.client.delete_collection(name=self.collection_name)
                 self.collection = self.client.create_collection(
                     name=self.collection_name,
                     embedding_function=self.embedding_fn,
-                    metadata={"description": "Haniff Kamal Portfolio Knowledge Base"}
+                    metadata={"description": "Haniff Kamal Portfolio Knowledge Base"},
                 )
             else:
                 raise
@@ -126,27 +137,29 @@ class RAGPipeline:
         # Ingest documents on startup
         self.ingest_markdown_files()
 
-    def _chunk_markdown(self, filename: str, content: str) -> List[Dict[str, Any]]:
+    def _chunk_markdown(self, filename: str, content: str) -> list[dict[str, Any]]:
         """
         Split markdown content into semantic chunks based on headers.
         Prepending section titles to each chunk preserves semantic context during vector search.
         """
-        chunks = []
+        chunks: list[dict[str, Any]] = []
         doc_title = os.path.basename(filename).replace(".md", "").capitalize()
         lines = content.split("\n")
         current_header = doc_title
-        current_lines = []
+        current_lines: list[str] = []
 
         for line in lines:
-            if line.startswith("## ") or line.startswith("### "):
+            if line.startswith(("## ", "### ")):
                 if current_lines:
                     chunk_text = "\n".join(current_lines).strip()
                     if chunk_text:
-                        chunks.append({
-                            "text": f"[{doc_title} - {current_header}]\n{chunk_text}",
-                            "source": os.path.basename(filename),
-                            "section": current_header
-                        })
+                        chunks.append(
+                            {
+                                "text": f"[{doc_title} - {current_header}]\n{chunk_text}",
+                                "source": os.path.basename(filename),
+                                "section": current_header,
+                            }
+                        )
                     current_lines = []
                 current_header = line.lstrip("#").strip()
             else:
@@ -156,16 +169,22 @@ class RAGPipeline:
         if current_lines:
             chunk_text = "\n".join(current_lines).strip()
             if chunk_text:
-                chunks.append({
-                    "text": f"[{doc_title} - {current_header}]\n{chunk_text}",
-                    "source": os.path.basename(filename),
-                    "section": current_header
-                })
+                chunks.append(
+                    {
+                        "text": f"[{doc_title} - {current_header}]\n{chunk_text}",
+                        "source": os.path.basename(filename),
+                        "section": current_header,
+                    }
+                )
 
         return chunks
 
     def ingest_markdown_files(self):
         """Read all .md files from data directory, chunk them, and index into ChromaDB."""
+        if self.client is None or self.collection is None or self.embedding_fn is None:
+            logger.warning("ChromaDB is not initialized.")
+            return
+
         search_pattern = os.path.join(self.data_dir, "*.md")
         files = glob.glob(search_pattern)
 
@@ -183,12 +202,12 @@ class RAGPipeline:
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
                 embedding_function=self.embedding_fn,
-                metadata={"description": "Haniff Kamal Portfolio Knowledge Base"}
+                metadata={"description": "Haniff Kamal Portfolio Knowledge Base"},
             )
 
-        documents = []
-        metadatas = []
-        ids = []
+        documents: list[str] = []
+        metadatas: list[Metadata] = []
+        ids: list[str] = []
 
         for file_path in files:
             try:
@@ -201,49 +220,48 @@ class RAGPipeline:
                 for idx, chunk in enumerate(chunks):
                     chunk_id = f"{base_name}_{idx}"
                     documents.append(chunk["text"])
-                    metadatas.append({
-                        "source": chunk["source"],
-                        "section": chunk["section"]
-                    })
+                    metadatas.append(
+                        {"source": chunk["source"], "section": chunk["section"]}
+                    )
                     ids.append(chunk_id)
 
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to parse markdown file %s: %s", file_path, exc)
 
         if documents:
-            self.collection.add(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids
+            self.collection.add(documents=documents, metadatas=metadatas, ids=ids)
+            logger.info(
+                "Successfully indexed %d chunks across %d documents into ChromaDB.",
+                len(documents),
+                len(files),
             )
-            logger.info("Successfully indexed %d chunks across %d documents into ChromaDB.", len(documents), len(files))
 
     def retrieve_context(self, query: str, n_results: int = 2) -> str:
         """
         Query ChromaDB for the most semantically relevant chunks matching user query.
         Returns a formatted string ready for LLM prompt augmentation.
         """
-        if not self.collection or self.collection.count() == 0:
+        if self.collection is None or self.collection.count() == 0:
             logger.warning("ChromaDB collection is empty or not initialized.")
             return ""
 
         try:
             results = self.collection.query(
-                query_texts=[query],
-                n_results=min(n_results, self.collection.count())
+                query_texts=[query], n_results=min(n_results, self.collection.count())
             )
 
-            retrieved_docs = results.get("documents", [[]])[0]
-            if not retrieved_docs:
+            docs_list = results.get("documents")
+            if not docs_list or not docs_list[0]:
                 return ""
 
-            context_blocks = []
+            retrieved_docs = docs_list[0]
+            context_blocks: list[str] = []
             for doc in retrieved_docs:
                 context_blocks.append(f"---\n{doc}")
 
             return "\n\n".join(context_blocks)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.error("Error retrieving context from ChromaDB: %s", exc)
             return ""
 

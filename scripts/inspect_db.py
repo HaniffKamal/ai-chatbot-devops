@@ -7,18 +7,21 @@
 #   docker exec -it chatbot-backend python3 scripts/inspect_db.py -q "deepfake research"
 # ==============================================================================
 
+import argparse
 import os
 import sys
-import argparse
 
 # Support execution inside container (/app) or on host relative to repository root
 sys.path.insert(0, "/app")
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend"))
+)
 
 import chromadb
 from app.rag import LocalOllamaEmbeddingFunction
 
-def inspect_chroma(query: str = None):
+
+def inspect_chroma(query: str | None = None):
     print("\n" + "=" * 60)
     print("🔍 ChromaDB Vector Database Inspector")
     print("=" * 60)
@@ -28,22 +31,20 @@ def inspect_chroma(query: str = None):
 
     ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
     embedding_fn = LocalOllamaEmbeddingFunction(
-        host=ollama_host,
-        model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+        host=ollama_host, model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     )
 
     try:
         collection = client.get_collection(
-            name="portfolio_knowledge",
-            embedding_function=embedding_fn
+            name="portfolio_knowledge", embedding_function=embedding_fn
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"❌ Could not load collection 'portfolio_knowledge': {exc}")
         return
 
     count = collection.count()
     print(f"📊 Storage Location : {persist_dir}")
-    print(f"📦 Collection Name  : portfolio_knowledge")
+    print("📦 Collection Name  : portfolio_knowledge")
     print(f"📑 Total Chunks     : {count}\n")
 
     if count == 0:
@@ -55,13 +56,18 @@ def inspect_chroma(query: str = None):
         print(f"🔎 Testing Semantic Query: '{query}'")
         print("-" * 60)
         results = collection.query(query_texts=[query], n_results=min(3, count))
-        docs = results.get("documents", [[]])[0]
-        metas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0] if "distances" in results else [0]*len(docs)
+        raw_docs = results.get("documents")
+        docs = raw_docs[0] if raw_docs else []
+        raw_metas = results.get("metadatas")
+        metas = raw_metas[0] if raw_metas else []
+        raw_distances = results.get("distances")
+        distances = raw_distances[0] if raw_distances else [0.0] * len(docs)
 
         for i, (doc, meta, dist) in enumerate(zip(docs, metas, distances)):
-            print(f"\n[Match #{i+1}] (Distance: {dist:.4f})")
-            print(f"Source  : {meta.get('source')} | Section: {meta.get('section')}")
+            source = meta.get("source") if isinstance(meta, dict) else "unknown"
+            section = meta.get("section") if isinstance(meta, dict) else "unknown"
+            print(f"\n[Match #{i + 1}] (Distance: {dist:.4f})")
+            print(f"Source  : {source} | Section: {section}")
             print(f"Content :\n{doc.strip()}")
             print("-" * 40)
         return
@@ -71,12 +77,20 @@ def inspect_chroma(query: str = None):
     print("📚 Stored Knowledge Chunks:")
     print("-" * 60)
 
-    for i, (cid, doc, meta) in enumerate(zip(data["ids"], data["documents"], data["metadatas"])):
-        source = meta.get("source", "unknown")
-        section = meta.get("section", "unknown")
+    ids = data.get("ids", [])
+    documents = data.get("documents") or []
+    metadatas = data.get("metadatas") or []
+
+    for i, (cid, doc, meta) in enumerate(zip(ids, documents, metadatas)):
+        source = meta.get("source", "unknown") if isinstance(meta, dict) else "unknown"
+        section = (
+            meta.get("section", "unknown") if isinstance(meta, dict) else "unknown"
+        )
         preview = doc.strip().replace("\n", " ")[:90]
 
-        print(f"[{i+1:02d}] ID: {cid:<15} | Source: {source:<12} | Section: {section}")
+        print(
+            f"[{i + 1:02d}] ID: {cid:<15} | Source: {source:<12} | Section: {section}"
+        )
         print(f"     Preview: {preview}...")
 
     print("=" * 60 + "\n")
@@ -84,6 +98,8 @@ def inspect_chroma(query: str = None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Inspect ChromaDB contents")
-    parser.add_argument("--query", "-q", type=str, default=None, help="Semantic search test query")
+    parser.add_argument(
+        "--query", "-q", type=str, default=None, help="Semantic search test query"
+    )
     args = parser.parse_args()
     inspect_chroma(query=args.query)
