@@ -67,8 +67,12 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY:-}                     # Optional cloud fallback API key
 
     volumes:
+      # Mount application source code for live development
+      - ./backend/app:/app/app:ro
       # Mount knowledge base markdown files (read-only for live updates)
       - ./backend/data:/app/data:ro
+      # Mount operational and diagnostic utility scripts
+      - ./scripts:/app/scripts:ro
       # Persist embedded ChromaDB vector storage
       - chroma_data:/app/chroma_db
 

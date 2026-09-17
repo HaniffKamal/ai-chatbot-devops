@@ -3,12 +3,18 @@
 # ChromaDB Inspector CLI: View & Query In-Process Vector Store
 # ==============================================================================
 # Usage:
-#   docker exec -it chatbot-backend python3 -m app.inspect_db
-#   docker exec -it chatbot-backend python3 -m app.inspect_db --query "deepfake research"
+#   docker exec -it chatbot-backend python3 scripts/inspect_db.py
+#   docker exec -it chatbot-backend python3 scripts/inspect_db.py -q "deepfake research"
 # ==============================================================================
 
+import os
 import sys
 import argparse
+
+# Support execution inside container (/app) or on host relative to repository root
+sys.path.insert(0, "/app")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
+
 import chromadb
 from app.rag import LocalOllamaEmbeddingFunction
 
@@ -17,12 +23,13 @@ def inspect_chroma(query: str = None):
     print("🔍 ChromaDB Vector Database Inspector")
     print("=" * 60)
 
-    persist_dir = "/app/chroma_db"
+    persist_dir = os.getenv("CHROMA_PERSIST_DIR", "/app/chroma_db")
     client = chromadb.PersistentClient(path=persist_dir)
 
+    ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
     embedding_fn = LocalOllamaEmbeddingFunction(
-        host="http://ollama:11434",
-        model="nomic-embed-text"
+        host=ollama_host,
+        model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     )
 
     try:
@@ -67,7 +74,6 @@ def inspect_chroma(query: str = None):
     for i, (cid, doc, meta) in enumerate(zip(data["ids"], data["documents"], data["metadatas"])):
         source = meta.get("source", "unknown")
         section = meta.get("section", "unknown")
-        first_line = doc.strip().split("\n")[0]
         preview = doc.strip().replace("\n", " ")[:90]
 
         print(f"[{i+1:02d}] ID: {cid:<15} | Source: {source:<12} | Section: {section}")
