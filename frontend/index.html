@@ -3,19 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Haniff Kamal | AI & DevOps Engineer</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 40px; background: #0f172a; color: #f8fafc; }
-        .card { background: #1e293b; padding: 24px; border-radius: 8px; max-width: 600px; border: 1px solid #334155; }
-        h1 { margin-top: 0; color: #38bdf8; }
-        .status { padding: 8px 12px; border-radius: 4px; background: #064e3b; color: #34d399; display: inline-block; font-size: 14px; font-weight: 600; }
-    </style>
+    <meta name="description" content="Interactive AI Assistant for Haniff Kamal - Audio Deepfake Detection Researcher & DevOps Engineer">
+    <title>Haniff Kamal | AI Chatbot & DevOps Platform</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="card">
-        <h1>Haniff Kamal — AI Portfolio</h1>
-        <p>DevOps & LLMOps Engine Initialized.</p>
-        <div class="status">● System Operational</div>
+    <div class="chat-app-wrapper">
+        <!-- Main Chat Application Container -->
+        <main class="chat-card" role="region" aria-label="AI Chat Assistant">
+            
+            <!-- Header Bar -->
+            <header class="chat-header">
+                <div class="chat-header-info">
+                    <div class="chat-avatar" aria-hidden="true">🤖</div>
+                    <div>
+                        <h1 class="chat-title">Haniff's AI Assistant</h1>
+                        <div class="chat-status">
+                            <span class="status-dot" aria-hidden="true"></span>
+                            <span class="status-text">LLM Inference Active</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="clear-chat-btn" class="chat-action-btn" title="Reset Conversation" aria-label="Reset Conversation">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </header>
+
+            <!-- Scrollable Message Stream -->
+            <div id="chat-messages" class="chat-messages" role="log" aria-live="polite">
+                <!-- Initial Welcome Message from Assistant -->
+                <div class="chat-message chat-message-assistant">
+                    <div class="chat-avatar" aria-hidden="true">🤖</div>
+                    <div class="chat-bubble">
+                        <p>Hi there! I am Haniff's AI assistant. Ask me anything about his <strong>Computer Engineering background</strong>, his research in <strong>Audio Deepfake Detection</strong>, or the <strong>DevOps/MLOps infrastructure</strong> powering this system.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive Quick-Reply Suggestion Pills -->
+            <section class="chat-suggestions" aria-label="Prompt Suggestions">
+                <button type="button" class="suggestion-pill" data-prompt="What are Haniff's technical skills in DevOps and AI?">
+                    📋 Technical Skills
+                </button>
+                <button type="button" class="suggestion-pill" data-prompt="Tell me about Haniff's research in Audio Deepfake Detection.">
+                    🔬 Deepfake Research
+                </button>
+                <button type="button" class="suggestion-pill" data-prompt="How was this chatbot infrastructure and MLOps pipeline built?">
+                    🛠️ MLOps Architecture
+                </button>
+                <button type="button" class="suggestion-pill" data-prompt="What is Haniff's education and engineering background?">
+                    🎓 Education & Bio
+                </button>
+            </section>
+
+            <!-- Typing / Inference State Indicator -->
+            <div id="chat-typing-indicator" class="chat-typing-indicator" aria-hidden="true">
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
+                <span class="typing-text">Generating response...</span>
+            </div>
+
+            <!-- Input Form Bar -->
+            <form id="chat-form" class="chat-input-form">
+                <label for="chat-input" class="sr-only">Type your message</label>
+                <input 
+                    type="text" 
+                    id="chat-input" 
+                    class="chat-input" 
+                    placeholder="Ask about Haniff's skills, research, or projects..." 
+                    autocomplete="off" 
+                    maxlength="1000"
+                    required
+                />
+                <button type="submit" id="chat-send-btn" class="chat-send-btn" aria-label="Send Message">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </form>
+
+            <!-- Footer Meta -->
+            <footer class="chat-footer">
+                <p>Powered by local Ollama LLM • FastAPI • Docker Compose • Nginx</p>
+            </footer>
+        </main>
     </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
