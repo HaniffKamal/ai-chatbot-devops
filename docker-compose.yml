@@ -76,6 +76,8 @@ services:
       - ./scripts:/app/scripts:ro
       # Persist embedded ChromaDB vector storage
       - chroma_data:/app/chroma_db
+      # Persist ONNX embedding model cache across container recreations
+      - chroma_models:/home/appuser/.cache
 
     # Startup order: ensure Ollama container starts before the backend boots
     depends_on:
@@ -121,6 +123,10 @@ volumes:
   # Persistent ChromaDB vector database storage
   chroma_data:
     name: chatbot_chroma_data
+
+  # Persistent cache for downloaded ONNX embedding model weights
+  chroma_models:
+    name: chatbot_chroma_models
 
 
 # ==============================================================================
