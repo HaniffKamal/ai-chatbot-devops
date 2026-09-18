@@ -1,11 +1,17 @@
 # ==============================================================================
 # Dual-Engine LLM Client: Seamless Primary (Ollama) + Cloud Fallback (Groq)
 # ==============================================================================
-# Architecture:
-#   1. Primary Engine: Local Ollama container with NVIDIA RTX GPU pass-through.
-#   2. Fallback Engine: High-speed Cloud Groq API (OpenAI-compatible LPU inference).
-#   3. Graceful Degradation: Friendly degraded message if all providers fail (Rule 4.1).
-#   4. Connection Pooling: Persistent async HTTP connection pools for minimal latency.
+# Architecture & DevOps Guardrails:
+#   1. High Availability (HA) Dual-Engine Pattern:
+#      - Primary: Local Ollama container with NVIDIA RTX GPU pass-through.
+#      - Fallback: Ultra-fast Cloud Groq API (OpenAI-compatible LPU inference).
+#   2. Graceful Degradation (Rule 4.1):
+#      - Unhandled HTTP 500 exceptions are never exposed to the client.
+#      - If all providers fail, a friendly status message is returned seamlessly.
+#   3. HTTP Connection Pooling:
+#      - Uses persistent `httpx.AsyncClient` pools with HTTP Keep-Alive.
+#      - Reuses open TCP sockets across chat requests to eliminate 200-500ms
+#        handshake overhead on every message.
 # ==============================================================================
 
 import logging
@@ -18,17 +24,27 @@ from app.config import Settings, settings
 logger = logging.getLogger("chatbot-llm")
 
 
+# ------------------------------------------------------------------------------
+# 1. Standardized Inference Result Model
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class LLMResult:
-    """Standardized inference response payload across all providers."""
+    """
+    Standardized inference response payload across all LLM providers.
+    Using an immutable dataclass (frozen=True) prevents accidental mutation
+    and ensures uniform contract delivery to FastAPI route handlers.
+    """
 
-    text: str
-    model: str
-    provider: str  # "ollama" | "groq" | "system-fallback"
-    success: bool
-    error_detail: str | None = None
+    text: str  # The raw generated reply text from the model
+    model: str  # The exact model that produced the answer (e.g. llama3.2:1b)
+    provider: str  # Engine name: "ollama", "groq", or "system-fallback"
+    success: bool  # True if generation succeeded; False if degraded
+    error_detail: str | None = None  # Internal diagnostic error if degraded
 
 
+# ------------------------------------------------------------------------------
+# 2. Dual-Engine LLM Inference Manager
+# ------------------------------------------------------------------------------
 class DualEngineLLM:
     """
     Manages dual-engine LLM inference lifecycle, upstream health verification,
@@ -37,17 +53,23 @@ class DualEngineLLM:
 
     def __init__(self, app_settings: Settings = settings):
         self.settings = app_settings
+        # Client connection pools are initialized during FastAPI lifespan startup
         self._ollama_client: httpx.AsyncClient | None = None
         self._groq_client: httpx.AsyncClient | None = None
 
     def initialize(self) -> None:
-        """Initialize async HTTP connection pools with custom timeouts."""
+        """
+        Initializes persistent async HTTP connection pools with custom timeouts.
+        - Keeps TCP connections open (HTTP Keep-Alive) for low-latency queries.
+        - Binds dedicated connection and read timeouts to prevent hanging processes.
+        """
         logger.info(
             "Initializing Dual-Engine LLM client pool (Primary: %s, Groq Fallback: %s)",
             self.settings.OLLAMA_HOST,
             "Enabled" if self.settings.is_groq_enabled else "Disabled",
         )
 
+        # Connection pool to local Ollama container
         self._ollama_client = httpx.AsyncClient(
             base_url=self.settings.OLLAMA_HOST,
             timeout=httpx.Timeout(
@@ -56,6 +78,7 @@ class DualEngineLLM:
             ),
         )
 
+        # Connection pool to Cloud Groq API
         self._groq_client = httpx.AsyncClient(
             base_url=self.settings.GROQ_BASE_URL,
             timeout=httpx.Timeout(
@@ -65,15 +88,24 @@ class DualEngineLLM:
         )
 
     async def aclose(self) -> None:
-        """Gracefully terminate open connection pools on application shutdown."""
+        """
+        Gracefully terminates open connection pools during application shutdown.
+        Prevents socket leaks when Docker stops or restarts the container.
+        """
         logger.info("Closing Dual-Engine LLM HTTP connection pools...")
         if self._ollama_client:
             await self._ollama_client.aclose()
         if self._groq_client:
             await self._groq_client.aclose()
 
+    # --------------------------------------------------------------------------
+    # Health Probe Methods (Used by /health endpoint and Prometheus)
+    # --------------------------------------------------------------------------
     async def check_ollama_health(self) -> bool:
-        """Probe local Ollama daemon for operational readiness."""
+        """
+        Probes local Ollama daemon for operational readiness.
+        Queries `/api/tags` with a fast 3-second timeout.
+        """
         if not self._ollama_client:
             return False
         try:
@@ -84,7 +116,10 @@ class DualEngineLLM:
             return False
 
     async def check_groq_health(self) -> bool:
-        """Probe Groq cloud API for authentication and connectivity."""
+        """
+        Probes Groq cloud API for authentication and connectivity.
+        Queries `/models` using the configured API key with a 5-second timeout.
+        """
         if not self._groq_client or not self.settings.is_groq_enabled:
             return False
         try:
@@ -97,10 +132,16 @@ class DualEngineLLM:
             logger.warning("Groq health check probe failed: %s", exc)
             return False
 
+    # --------------------------------------------------------------------------
+    # Low-Level Engine Dispatchers
+    # --------------------------------------------------------------------------
     async def _query_ollama(
         self, prompt: str, system_prompt: str, model_name: str
     ) -> str:
-        """Dispatch inference request to local Ollama container."""
+        """
+        Dispatches inference request to local Ollama container via `/api/generate`.
+        Extracts the response string from the returned JSON payload.
+        """
         if not self._ollama_client:
             raise RuntimeError("Ollama client pool is not initialized")
 
@@ -108,7 +149,7 @@ class DualEngineLLM:
             "model": model_name,
             "prompt": prompt,
             "system": system_prompt,
-            "stream": False,
+            "stream": False,  # Return full response once generation completes
         }
 
         logger.info("Dispatching prompt to Ollama model '%s'", model_name)
@@ -124,7 +165,10 @@ class DualEngineLLM:
         return reply_text
 
     async def _query_groq(self, prompt: str, system_prompt: str) -> str:
-        """Dispatch OpenAI-compatible chat completion request to Groq Cloud."""
+        """
+        Dispatches OpenAI-compatible chat completion request to Groq Cloud.
+        Formats payload with roles (system + user) and authorizes via Bearer token.
+        """
         if not self._groq_client:
             raise RuntimeError("Groq client pool is not initialized")
         if not self.settings.is_groq_enabled:
@@ -143,7 +187,7 @@ class DualEngineLLM:
         payload: dict[str, Any] = {
             "model": self.settings.GROQ_MODEL,
             "messages": messages,
-            "temperature": 0.2,
+            "temperature": 0.2,  # Low temperature for factual, grounded answers
             "max_tokens": 1024,
         }
 
@@ -171,20 +215,23 @@ class DualEngineLLM:
 
         return reply_text
 
+    # --------------------------------------------------------------------------
+    # 3-Tier Failover Orchestrator (AGENTS.md Rule 4.1)
+    # --------------------------------------------------------------------------
     async def generate_response(
         self, prompt: str, system_prompt: str = "", model: str | None = None
     ) -> LLMResult:
         """
-        Execute dual-engine inference with automatic failover and graceful degradation.
-        1. Attempt primary local Ollama.
-        2. On failure/timeout, fall back to Groq Cloud API.
-        3. On total failure, return friendly degraded message (Rule 4.1).
+        Executes dual-engine inference with automatic failover and graceful degradation:
+          Tier 1: Attempt local Ollama on RTX 3060 GPU.
+          Tier 2: On timeout or connection failure, fall back to Groq Cloud API.
+          Tier 3: On total failure, return friendly degraded message without 500 error.
         """
         target_model = model or self.settings.DEFAULT_MODEL
         ollama_error: str | None = None
 
         # ----------------------------------------------------------------------
-        # 1. Primary Engine: Local Ollama
+        # Tier 1: Primary Engine (Local Ollama)
         # ----------------------------------------------------------------------
         try:
             reply = await self._query_ollama(
@@ -206,7 +253,7 @@ class DualEngineLLM:
             )
 
         # ----------------------------------------------------------------------
-        # 2. Fallback Engine: Cloud Groq
+        # Tier 2: Fallback Engine (Cloud Groq)
         # ----------------------------------------------------------------------
         groq_error: str | None = None
         if self.settings.is_groq_enabled:
@@ -233,7 +280,7 @@ class DualEngineLLM:
             logger.warning("Groq fallback skipped: %s", groq_error)
 
         # ----------------------------------------------------------------------
-        # 3. Graceful Degradation (Rule 4.1)
+        # Tier 3: Graceful Degradation (Rule 4.1)
         # ----------------------------------------------------------------------
         logger.error(
             "Dual-engine inference failed completely. (Ollama: %s | Groq: %s)",
