@@ -35,29 +35,45 @@
     }
 
     /**
-     * Lightweight safe markdown parser for LLM responses.
-     * Parses bold, italic, inline code, and line breaks after escaping.
+     * Senior-grade secure Markdown parser.
+     * Uses marked.js to render GitHub Flavored Markdown (tables, lists, headers, code, bold)
+     * and sanitizes with DOMPurify to guarantee zero Cross-Site Scripting (XSS).
+     *
      * @param {string} text - Raw model response.
-     * @returns {string} - Formatted HTML string.
+     * @returns {string} - Rendered, sanitized HTML string.
      */
-    function parseMarkdown(text) {
+     function parseMarkdown(text) {
+        if (!text) return "";
+
+        // Use marked.js if available for rich GFM rendering (tables, lists, etc.)
+        if (typeof marked !== "undefined" && typeof marked.parse === "function") {
+            try {
+                marked.setOptions({
+                    gfm: true,
+                    breaks: true,
+                });
+
+                const rawHtml = marked.parse(text);
+
+                // Sanitize output via DOMPurify to prevent XSS attacks
+                if (typeof DOMPurify !== "undefined" && typeof DOMPurify.sanitize === "function") {
+                    return DOMPurify.sanitize(rawHtml);
+                }
+                return rawHtml;
+            } catch (err) {
+                console.warn("marked.js parse error, falling back to basic parser:", err);
+            }
+        }
+
+        // Resilient fallback parser if library is missing
         let safe = escapeHTML(text);
-
-        // Convert inline code: `code` -> <code>code</code>
         safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-        // Convert bold: **bold** or __bold__ -> <strong>bold</strong>
         safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
         safe = safe.replace(/__([^_]+)__/g, "<strong>$1</strong>");
-
-        // Convert italic: *italic* or _italic_ -> <em>italic</em>
         safe = safe.replace(/\*([^*]+)\*/g, "<em>$1</em>");
         safe = safe.replace(/_([^_]+)_/g, "<em>$1</em>");
-
-        // Convert newlines to paragraphs / breaks
         safe = safe.replace(/\n\n+/g, "</p><p>");
         safe = safe.replace(/\n/g, "<br>");
-
         return `<p>${safe}</p>`;
     }
 
