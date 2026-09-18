@@ -1,11 +1,11 @@
 # ==============================================================================
-# RAG Pipeline: In-Process ChromaDB Retrieval Engine with Ollama Embeddings
+# RAG Pipeline: In-Process ChromaDB Retrieval Engine with Standalone ONNX Embeddings
 # ==============================================================================
 # Responsibilities:
 #   1. Parses Markdown documents from /app/data into semantic chunks.
-#   2. Delegates vector embeddings directly to local Ollama (nomic-embed-text)
-#      using native GPU acceleration without external S3 download bottlenecks.
-#   3. Stores vectors in an in-process ChromaDB database.
+#   2. Generates vector embeddings directly in-process via ONNX (all-MiniLM-L6-v2)
+#      with zero dependencies on external APIs or running Ollama containers.
+#   3. Stores vectors in an in-process persistent ChromaDB database.
 #   4. Performs cosine similarity queries against incoming user prompts.
 #   5. Synthesizes a factual, grounded system prompt for the LLM.
 # ==============================================================================
@@ -16,66 +16,12 @@ import os
 from typing import Any
 
 import chromadb
-import httpx
 from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
-from chromadb.api.types import Embeddable, EmbeddingFunction, Metadata
+from chromadb.api.types import Metadata
+from chromadb.utils import embedding_functions
 
 logger = logging.getLogger("chatbot-rag")
-
-
-class LocalOllamaEmbeddingFunction(EmbeddingFunction[Embeddable]):
-    """
-    Zero-overhead embedding function connecting directly to local Ollama.
-    Bypasses slow external S3 downloads and leverages your NVIDIA RTX 3060 GPU.
-    """
-
-    def __init__(
-        self, host: str = "http://ollama:11434", model: str = "nomic-embed-text"
-    ):
-        self.host = host.rstrip("/")
-        self.model = model
-
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        embeddings: list[list[float]] = []
-        with httpx.Client(
-            base_url=self.host, timeout=httpx.Timeout(60.0, connect=10.0)
-        ) as client:
-            for text in input:
-                try:
-                    response = client.post(
-                        "/api/embeddings", json={"model": self.model, "prompt": text}
-                    )
-                    response.raise_for_status()
-                    embeddings.append(response.json()["embedding"])
-                except Exception as exc:
-                    logger.error(
-                        "Failed to generate embedding for text '%s...': %s",
-                        text[:40],
-                        exc,
-                    )
-                    raise
-        return embeddings
-
-    def embed_query(self, input: list[str]) -> list[list[float]]:
-        return self.__call__(input)
-
-    def embed_documents(self, input: list[str]) -> list[list[float]]:
-        return self.__call__(input)
-
-    @staticmethod
-    def name() -> str:
-        return "local_ollama"
-
-    def get_config(self) -> dict[str, Any]:
-        return {"host": self.host, "model": self.model}
-
-    @staticmethod
-    def build_from_config(config: dict[str, Any]) -> "LocalOllamaEmbeddingFunction":
-        return LocalOllamaEmbeddingFunction(
-            host=config.get("host", "http://ollama:11434"),
-            model=config.get("model", "nomic-embed-text"),
-        )
 
 
 class RAGPipeline:
@@ -89,27 +35,28 @@ class RAGPipeline:
         persist_dir: str = "/app/chroma_db",
         data_dir: str = "/app/data",
         collection_name: str = "portfolio_knowledge",
-        ollama_host: str = "http://ollama:11434",
-        embedding_model: str = "nomic-embed-text",
+        embedding_model: str = "all-MiniLM-L6-v2",
+        embedding_function: Any = None,
+        ollama_host: str | None = None,
+        **kwargs: Any,
     ):
         self.persist_dir = persist_dir
         self.data_dir = data_dir
         self.collection_name = collection_name
-        self.ollama_host = ollama_host
         self.embedding_model = embedding_model
         self.client: ClientAPI | None = None
         self.collection: Collection | None = None
-        self.embedding_fn: LocalOllamaEmbeddingFunction | None = None
+        self.embedding_fn: Any = embedding_function
 
     def initialize(self):
         """Initialize ChromaDB client and ingest knowledge base documents."""
         os.makedirs(self.persist_dir, exist_ok=True)
         logger.info("Initializing ChromaDB persistent client at %s", self.persist_dir)
 
-        # Uses local Ollama GPU embeddings (nomic-embed-text)
-        self.embedding_fn = LocalOllamaEmbeddingFunction(
-            host=self.ollama_host, model=self.embedding_model
-        )
+        # In-process ONNX embeddings (all-MiniLM-L6-v2)
+        # 100% self-contained: works regardless of Ollama status and runs fast on CPU
+        if self.embedding_fn is None:
+            self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
 
         # In-process persistent ChromaDB instance
         self.client = chromadb.PersistentClient(path=self.persist_dir)
@@ -121,9 +68,9 @@ class RAGPipeline:
                 metadata={"description": "Haniff Kamal Portfolio Knowledge Base"},
             )
         except ValueError as exc:
-            if "Embedding function conflict" in str(exc):
+            if "conflict" in str(exc).lower() or "dimensionality" in str(exc).lower():
                 logger.info(
-                    "Resetting collection due to embedding function upgrade to local Ollama..."
+                    "Resetting collection due to embedding model upgrade: %s", exc
                 )
                 self.client.delete_collection(name=self.collection_name)
                 self.collection = self.client.create_collection(

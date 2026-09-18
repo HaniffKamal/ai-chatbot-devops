@@ -18,7 +18,7 @@ sys.path.insert(
 )
 
 import chromadb
-from app.rag import LocalOllamaEmbeddingFunction
+from chromadb.utils import embedding_functions
 
 
 def inspect_chroma(query: str | None = None):
@@ -29,10 +29,9 @@ def inspect_chroma(query: str | None = None):
     persist_dir = os.getenv("CHROMA_PERSIST_DIR", "/app/chroma_db")
     client = chromadb.PersistentClient(path=persist_dir)
 
-    ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-    embedding_fn = LocalOllamaEmbeddingFunction(
-        host=ollama_host, model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-    )
+    from typing import Any
+
+    embedding_fn: Any = embedding_functions.DefaultEmbeddingFunction()
 
     try:
         collection = client.get_collection(

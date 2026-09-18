@@ -53,7 +53,6 @@ async def lifespan(app: FastAPI):
         rag_pipeline = RAGPipeline(
             persist_dir=settings.CHROMA_PERSIST_DIR,
             data_dir=settings.KNOWLEDGE_DATA_DIR,
-            ollama_host=settings.OLLAMA_HOST,
             embedding_model=settings.EMBEDDING_MODEL,
         )
         rag_pipeline.initialize()
