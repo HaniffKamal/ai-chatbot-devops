@@ -56,11 +56,12 @@ class Settings(BaseSettings):
     # --------------------------------------------------------------------------
     # Embedded ChromaDB & RAG Knowledge Store
     # --------------------------------------------------------------------------
-    # EMBEDDING_MODEL: Vector embedding model running in Ollama on the RTX 3060 GPU.
+    # EMBEDDING_MODEL: In-process ONNX embedding model (all-MiniLM-L6-v2).
+    #                  Runs 100% locally in FastAPI on pure CPU without Ollama dependency.
     # CHROMA_PERSIST_DIR: Container path where ChromaDB's SQLite database is stored.
     #                     (Mounted to a Docker Named Volume so vectors survive restarts).
     # KNOWLEDGE_DATA_DIR: Directory containing raw portfolio markdown files for ingestion.
-    EMBEDDING_MODEL: str = "nomic-embed-text"
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     CHROMA_PERSIST_DIR: str = "/app/chroma_db"
     KNOWLEDGE_DATA_DIR: str = "/app/data"
 
