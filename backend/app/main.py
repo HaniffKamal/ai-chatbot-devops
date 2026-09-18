@@ -1,19 +1,19 @@
 # ==============================================================================
-# FastAPI Backend: Asynchronous LLM Inference & RAG Microservice
+# FastAPI Backend: Asynchronous Dual-Engine LLM Inference & RAG Microservice
 # ==============================================================================
 # Responsibilities:
 #   1. Exposes public REST endpoints (/api/chat, /health).
 #   2. Validates user input payloads using strict Pydantic schemas.
 #   3. Manages an in-process ChromaDB vector store for RAG grounding.
-#   4. Maintains an asynchronous HTTP connection pool to Ollama (http://ollama:11434).
-#   5. Handles upstream timeouts, connection failures, and error logging gracefully.
+#   4. Orchestrates Dual-Engine LLM inference (Ollama primary + Groq Cloud fallback).
+#   5. Enforces graceful degradation without exposing unhandled 500 exceptions (Rule 4.1).
 # ==============================================================================
 
 import logging
-import os
 from contextlib import asynccontextmanager
 
-import httpx
+from app.config import settings
+from app.llm_client import DualEngineLLM
 from app.rag import RAGPipeline
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,50 +23,38 @@ from pydantic import BaseModel, Field
 # 1. Structured Application Logging
 # ------------------------------------------------------------------------------
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("chatbot-backend")
 
-# ------------------------------------------------------------------------------
-# 2. Dynamic Environment Configuration
-# ------------------------------------------------------------------------------
-OLLAMA_HOST = os.getenv(
-    "OLLAMA_HOST", "http://ollama:11434"
-)  # Internal Docker DNS for Ollama
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "llama3.2:1b")  # Default model to query
-OLLAMA_TIMEOUT = float(
-    os.getenv("OLLAMA_TIMEOUT", "60.0")
-)  # Maximum time (s) to wait for LLM
-CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "/app/chroma_db")
-KNOWLEDGE_DATA_DIR = os.getenv("KNOWLEDGE_DATA_DIR", "/app/data")
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-
-# Global singletons
-http_client: httpx.AsyncClient | None = None
+# Global service singletons
+dual_engine: DualEngineLLM | None = None
 rag_pipeline: RAGPipeline | None = None
 
 
 # ------------------------------------------------------------------------------
-# 3. Application Lifespan (Startup & Shutdown Event Manager)
+# 2. Application Lifespan (Startup & Shutdown Event Manager)
 # ------------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage lifecycle of HTTP client pool and in-process ChromaDB vector store."""
-    global http_client, rag_pipeline
-    logger.info("Initializing HTTP client connection pool to Ollama at %s", OLLAMA_HOST)
-
-    # Initialize connection pool with timeouts
-    http_client = httpx.AsyncClient(
-        base_url=OLLAMA_HOST, timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
+    """Manage lifecycle of Dual-Engine LLM pool and in-process ChromaDB vector store."""
+    global dual_engine, rag_pipeline
+    logger.info(
+        "Starting AI Chatbot Backend in '%s' environment...", settings.ENVIRONMENT
     )
 
-    # Initialize embedded ChromaDB RAG pipeline
+    # 1. Initialize Dual-Engine LLM Connection Pools
+    dual_engine = DualEngineLLM(app_settings=settings)
+    dual_engine.initialize()
+
+    # 2. Initialize embedded ChromaDB RAG pipeline
     try:
         rag_pipeline = RAGPipeline(
-            persist_dir=CHROMA_PERSIST_DIR,
-            data_dir=KNOWLEDGE_DATA_DIR,
-            ollama_host=OLLAMA_HOST,
-            embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
+            persist_dir=settings.CHROMA_PERSIST_DIR,
+            data_dir=settings.KNOWLEDGE_DATA_DIR,
+            ollama_host=settings.OLLAMA_HOST,
+            embedding_model=settings.EMBEDDING_MODEL,
         )
         rag_pipeline.initialize()
         logger.info("RAG pipeline successfully initialized.")
@@ -75,23 +63,27 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Clean shutdown
-    logger.info("Closing HTTP client connection pool...")
-    if http_client:
-        await http_client.aclose()
+    # 3. Clean shutdown
+    logger.info("Shutting down AI Chatbot Backend...")
+    if dual_engine:
+        await dual_engine.aclose()
 
 
 # ------------------------------------------------------------------------------
-# 4. FastAPI Application Initialization
+# 3. FastAPI Application Initialization
 # ------------------------------------------------------------------------------
-app = FastAPI(title="AI Portfolio Chatbot API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="AI Portfolio Chatbot API",
+    version="1.1.0",
+    lifespan=lifespan,
+)
 
 # ------------------------------------------------------------------------------
-# 5. Cross-Origin Resource Sharing (CORS) Configuration
+# 4. Cross-Origin Resource Sharing (CORS) Configuration
 # ------------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -99,7 +91,7 @@ app.add_middleware(
 
 
 # ------------------------------------------------------------------------------
-# 6. Pydantic Request & Response Schemas (Input Validation)
+# 5. Pydantic Request & Response Schemas (Input Validation)
 # ------------------------------------------------------------------------------
 
 
@@ -119,12 +111,13 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """Schema for successful chatbot reply sent back to the frontend."""
+    """Schema for chatbot reply sent back to the frontend."""
 
     reply: str
     model: str
+    provider: str = "ollama"  # "ollama" | "groq" | "system-fallback"
     context_used: bool = False
-    status: str = "success"
+    status: str = "success"  # "success" | "degraded"
 
 
 class HealthResponse(BaseModel):
@@ -132,24 +125,25 @@ class HealthResponse(BaseModel):
 
     status: str
     ollama_connected: bool
+    groq_configured: bool
+    groq_connected: bool
     configured_model: str
+    fallback_model: str
     rag_indexed_chunks: int = 0
 
 
 # ------------------------------------------------------------------------------
-# 7. Healthcheck Route: GET /health
+# 6. Healthcheck Route: GET /health
 # ------------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Verify backend health, Ollama connectivity, and ChromaDB chunk count."""
+    """Verify backend health, Ollama status, Groq fallback status, and ChromaDB count."""
     ollama_ok = False
+    groq_ok = False
 
-    if http_client:
-        try:
-            response = await http_client.get("/api/tags", timeout=3.0)
-            ollama_ok = response.status_code == status.HTTP_200_OK
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Health check failed to reach Ollama: %s", exc)
+    if dual_engine:
+        ollama_ok = await dual_engine.check_ollama_health()
+        groq_ok = await dual_engine.check_groq_health()
 
     rag_chunks = 0
     if rag_pipeline and rag_pipeline.collection:
@@ -161,24 +155,27 @@ async def health_check():
     return HealthResponse(
         status="ok",
         ollama_connected=ollama_ok,
-        configured_model=DEFAULT_MODEL,
+        groq_configured=settings.is_groq_enabled,
+        groq_connected=groq_ok,
+        configured_model=settings.DEFAULT_MODEL,
+        fallback_model=settings.GROQ_MODEL,
         rag_indexed_chunks=rag_chunks,
     )
 
 
 # ------------------------------------------------------------------------------
-# 8. Chat Generation Route: POST /api/chat
+# 7. Chat Generation Route: POST /api/chat
 # ------------------------------------------------------------------------------
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
     """
     Retrieves grounding context from ChromaDB, constructs a secured system prompt,
-    and forwards inference asynchronously to Ollama.
+    and forwards inference to DualEngineLLM (Ollama primary -> Groq fallback).
     """
-    if not http_client:
+    if not dual_engine:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="HTTP client pool is not initialized",
+            detail="Dual-engine LLM client is not initialized",
         )
 
     # 1. Semantic retrieval from ChromaDB knowledge base
@@ -199,48 +196,17 @@ async def chat_endpoint(request: ChatRequest):
             logger.warning("RAG retrieval failed, proceeding without context: %s", exc)
             system_prompt = rag_pipeline.build_system_prompt("")
 
-    # 2. Prepare payload for Ollama
-    model_to_use = request.model or DEFAULT_MODEL
-    payload = {
-        "model": model_to_use,
-        "prompt": request.message,
-        "system": system_prompt,
-        "stream": False,
-    }
+    # 2. Forward inference through Dual-Engine LLM (Ollama -> Groq -> Graceful Fallback)
+    result = await dual_engine.generate_response(
+        prompt=request.message,
+        system_prompt=system_prompt,
+        model=request.model,
+    )
 
-    logger.info("Forwarding prompt to Ollama model '%s'", model_to_use)
-
-    try:
-        response = await http_client.post("/api/generate", json=payload)
-        response.raise_for_status()
-
-        data = response.json()
-        reply_text = data.get("response", "").strip()
-
-        if not reply_text:
-            raise ValueError("Ollama returned an empty response string")
-
-        return ChatResponse(
-            reply=reply_text, model=model_to_use, context_used=bool(retrieved_context)
-        )
-
-    except httpx.ConnectError:
-        logger.error("Failed to connect to Ollama at %s", OLLAMA_HOST)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Inference service unreachable. Ensure Ollama container is healthy.",
-        )
-
-    except httpx.TimeoutException:
-        logger.error("Inference timed out after %s seconds", OLLAMA_TIMEOUT)
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail=f"Inference request timed out after {OLLAMA_TIMEOUT}s.",
-        )
-
-    except Exception as exc:
-        logger.exception("Error processing LLM request")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal inference failure: {exc}",
-        ) from exc
+    return ChatResponse(
+        reply=result.text,
+        model=result.model,
+        provider=result.provider,
+        context_used=bool(retrieved_context),
+        status="success" if result.success else "degraded",
+    )
