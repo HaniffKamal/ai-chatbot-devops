@@ -65,6 +65,7 @@ services:
       - DEFAULT_MODEL=${DEFAULT_MODEL:-llama3.1:8b}         # Target model to query
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60.0}              # Timeout for LLM generation in seconds
       - GROQ_API_KEY=${GROQ_API_KEY:-}                     # Optional cloud fallback API key
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-20b}       # Fast cloud fallback model
 
     volumes:
       # Mount application source code for live development
