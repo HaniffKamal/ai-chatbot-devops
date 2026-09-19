@@ -1,4 +1,9 @@
-# Technical Skills & Competencies
+# Haniff Kamal - Technical Skills & Competencies
+
+## Core Technical Skills Summary
+- **DevOps & Cloud:** Docker, Docker Compose, AWS (EC2, VPC, S3), Terraform, Ansible, GitHub Actions CI/CD, Nginx reverse proxy, Prometheus & Grafana observability.
+- **AI, Deep Learning & MLOps:** Local LLM inference (Ollama), Vector RAG (ChromaDB), Cloud inference (Groq), PyTorch, Torchaudio, Scikit-learn, Audio Deepfake Detection.
+- **Programming & Systems:** Python (FastAPI, Asyncio, Pydantic), Linux system administration (Ubuntu/Debian), Bash automation scripting, Git trunk-based development.
 
 ## Cloud & Infrastructure as Code (IaC)
 - **Amazon Web Services (AWS):** EC2, VPC, Internet Gateways, Route 53, Security Groups, IAM least privilege, S3, Elastic IPs. Focus on AWS Free Tier preservation and strict cost minimization.

@@ -48,6 +48,33 @@ class RAGPipeline:
         self.collection: Collection | None = None
         self.embedding_fn: Any = embedding_function
 
+    def get_collection(self) -> Collection:
+        """
+        Safely retrieve or refresh the collection handle from ChromaDB.
+        Guarantees self-healing against stale handles if the database was
+        modified or refreshed externally.
+        """
+        if self.client is None:
+            self.client = chromadb.PersistentClient(path=self.persist_dir)
+
+        if self.embedding_fn is None:
+            self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+
+        try:
+            if self.collection is not None:
+                # Validate handle against ChromaDB engine
+                _ = self.collection.count()
+                return self.collection
+        except Exception:  # noqa: BLE001
+            logger.warning("Cached collection handle is stale or invalid; re-acquiring...")
+
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            embedding_function=self.embedding_fn,
+            metadata={"description": "Haniff Kamal Portfolio Knowledge Base"},
+        )
+        return self.collection
+
     def initialize(self):
         """Initialize ChromaDB client and ingest knowledge base documents."""
         os.makedirs(self.persist_dir, exist_ok=True)
@@ -62,11 +89,7 @@ class RAGPipeline:
         self.client = chromadb.PersistentClient(path=self.persist_dir)
 
         try:
-            self.collection = self.client.get_or_create_collection(
-                name=self.collection_name,
-                embedding_function=self.embedding_fn,
-                metadata={"description": "Haniff Kamal Portfolio Knowledge Base"},
-            )
+            self.collection = self.get_collection()
         except ValueError as exc:
             if "conflict" in str(exc).lower() or "dimensionality" in str(exc).lower():
                 logger.info(
@@ -87,11 +110,20 @@ class RAGPipeline:
     def _chunk_markdown(self, filename: str, content: str) -> list[dict[str, Any]]:
         """
         Split markdown content into semantic chunks based on headers.
-        Prepending section titles to each chunk preserves semantic context during vector search.
+        Extracts top-level document title and prepends rich context headers
+        to maximize vector similarity during RAG retrieval.
         """
         chunks: list[dict[str, Any]] = []
-        doc_title = os.path.basename(filename).replace(".md", "").capitalize()
+        base_name = os.path.basename(filename).replace(".md", "").capitalize()
         lines = content.split("\n")
+
+        # Extract top-level document title if available
+        doc_title = base_name
+        for line in lines:
+            if line.startswith("# ") and not line.startswith("## "):
+                doc_title = line.lstrip("#").strip()
+                break
+
         current_header = doc_title
         current_lines: list[str] = []
 
@@ -99,7 +131,12 @@ class RAGPipeline:
             if line.startswith(("## ", "### ")):
                 if current_lines:
                     chunk_text = "\n".join(current_lines).strip()
-                    if chunk_text:
+                    # Strip leading level-1 header if present to avoid empty title chunks
+                    if chunk_text.startswith(f"# {doc_title}"):
+                        chunk_text = chunk_text[len(f"# {doc_title}") :].strip()
+
+                    # Only register chunks with substantial content (ignore title-only blocks)
+                    if len(chunk_text) > 30:
                         chunks.append(
                             {
                                 "text": f"[{doc_title} - {current_header}]\n{chunk_text}",
@@ -115,7 +152,10 @@ class RAGPipeline:
         # Append final chunk
         if current_lines:
             chunk_text = "\n".join(current_lines).strip()
-            if chunk_text:
+            if chunk_text.startswith(f"# {doc_title}"):
+                chunk_text = chunk_text[len(f"# {doc_title}") :].strip()
+
+            if len(chunk_text) > 30:
                 chunks.append(
                     {
                         "text": f"[{doc_title} - {current_header}]\n{chunk_text}",
@@ -128,10 +168,6 @@ class RAGPipeline:
 
     def ingest_markdown_files(self):
         """Read all .md files from data directory, chunk them, and index into ChromaDB."""
-        if self.client is None or self.collection is None or self.embedding_fn is None:
-            logger.warning("ChromaDB is not initialized.")
-            return
-
         search_pattern = os.path.join(self.data_dir, "*.md")
         files = glob.glob(search_pattern)
 
@@ -139,18 +175,20 @@ class RAGPipeline:
             logger.warning("No markdown files found in %s to index.", self.data_dir)
             return
 
+        collection = self.get_collection()
         logger.info("Ingesting %d markdown files from %s...", len(files), self.data_dir)
 
-        # Reset collection to prevent duplicate entries on restarts
-        existing_count = self.collection.count()
-        if existing_count > 0:
-            logger.info("Refreshing collection (existing chunks: %d)", existing_count)
-            self.client.delete_collection(name=self.collection_name)
-            self.collection = self.client.get_or_create_collection(
-                name=self.collection_name,
-                embedding_function=self.embedding_fn,
-                metadata={"description": "Haniff Kamal Portfolio Knowledge Base"},
-            )
+        # Clear existing records safely by ID to avoid invalidating the collection handle
+        try:
+            existing = collection.get()
+            existing_ids = existing.get("ids", [])
+            if existing_ids:
+                logger.info(
+                    "Clearing %d existing chunks before re-indexing...", len(existing_ids)
+                )
+                collection.delete(ids=existing_ids)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not clear existing chunks, will upsert: %s", exc)
 
         documents: list[str] = []
         metadatas: list[Metadata] = []
@@ -176,25 +214,27 @@ class RAGPipeline:
                 logger.error("Failed to parse markdown file %s: %s", file_path, exc)
 
         if documents:
-            self.collection.add(documents=documents, metadatas=metadatas, ids=ids)
+            collection.upsert(documents=documents, metadatas=metadatas, ids=ids)
             logger.info(
                 "Successfully indexed %d chunks across %d documents into ChromaDB.",
                 len(documents),
                 len(files),
             )
 
-    def retrieve_context(self, query: str, n_results: int = 2) -> str:
+    def retrieve_context(self, query: str, n_results: int = 4) -> str:
         """
         Query ChromaDB for the most semantically relevant chunks matching user query.
         Returns a formatted string ready for LLM prompt augmentation.
         """
-        if self.collection is None or self.collection.count() == 0:
-            logger.warning("ChromaDB collection is empty or not initialized.")
-            return ""
-
         try:
-            results = self.collection.query(
-                query_texts=[query], n_results=min(n_results, self.collection.count())
+            collection = self.get_collection()
+            count = collection.count()
+            if count == 0:
+                logger.warning("ChromaDB collection is empty.")
+                return ""
+
+            results = collection.query(
+                query_texts=[query], n_results=min(n_results, count)
             )
 
             docs_list = results.get("documents")
@@ -223,8 +263,10 @@ class RAGPipeline:
             "2. If the user asks something not covered in the context, politely inform them that you only "
             "have information on Haniff's Computer Engineering background, Audio Deepfake Detection research, "
             "and DevOps/MLOps cloud projects.\n"
-            "3. Keep responses direct, professional, and well-structured.\n"
-            "4. Do NOT make up or extrapolate facts not present in the context."
+            "3. Format your answers cleanly using Markdown bullet points or Markdown tables.\n"
+            "4. Strictly mirror the verified skills and tools listed in the context. Do NOT invent, assume, "
+            "or extrapolate tools (e.g. do NOT mention Jenkins, CircleCI, Perl, or AWS Lambda unless present in the context).\n"
+            "5. Keep responses factual, direct, and professional."
         )
 
         if context.strip():

@@ -145,9 +145,9 @@ async def health_check():
         groq_ok = await dual_engine.check_groq_health()
 
     rag_chunks = 0
-    if rag_pipeline and rag_pipeline.collection:
+    if rag_pipeline:
         try:
-            rag_chunks = rag_pipeline.collection.count()
+            rag_chunks = rag_pipeline.get_collection().count()
         except Exception:  # noqa: BLE001
             rag_chunks = 0
 
@@ -183,7 +183,7 @@ async def chat_endpoint(request: ChatRequest):
     if rag_pipeline:
         try:
             retrieved_context = rag_pipeline.retrieve_context(
-                request.message, n_results=2
+                request.message, n_results=5
             )
             system_prompt = rag_pipeline.build_system_prompt(retrieved_context)
             logger.info(

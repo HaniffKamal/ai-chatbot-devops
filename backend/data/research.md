@@ -1,4 +1,4 @@
-# Audio Deepfake Detection Research
+# Haniff Kamal - Audio Deepfake Detection Research
 
 ## Problem Statement
 The rapid democratization of generative speech synthesis, Voice Conversion (VC), and Text-to-Speech (TTS) models (such as VITS, diffusion models, and neural vocoders) has created severe risks:
