@@ -1,4 +1,4 @@
-# Highlight Projects & Architecture
+# Haniff Kamal - Highlight Projects & Architecture
 
 ## AI Chatbot & MLOps Infrastructure Platform (`ai-chatbot-devops`)
 - **Repository:** `github.com/HaniffKamal/ai-chatbot-devops`
