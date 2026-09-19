@@ -1,13 +1,10 @@
 # ==============================================================================
-# RAG Pipeline: In-Process ChromaDB Retrieval Engine with Standalone ONNX Embeddings
+# RAG Pipeline: In-Process ChromaDB Retrieval Engine (ONNX Embeddings)
 # ==============================================================================
-# Responsibilities:
-#   1. Parses Markdown documents from /app/data into semantic chunks.
-#   2. Generates vector embeddings directly in-process via ONNX (all-MiniLM-L6-v2)
-#      with zero dependencies on external APIs or running Ollama containers.
-#   3. Stores vectors in an in-process persistent ChromaDB database.
-#   4. Performs cosine similarity queries against incoming user prompts.
-#   5. Synthesizes a factual, grounded system prompt for the LLM.
+# 1. Standalone ONNX (all-MiniLM-L6-v2): CPU-friendly, decoupled from Ollama.
+# 2. Self-Healing ChromaDB: Auto-reconnects if collection handle becomes stale.
+# 3. Non-Destructive Ingestion: Uses delete(ids=...) + upsert() to keep UUID intact.
+# 4. Context Tagging: Enriches chunks with [DocTitle - Section] to boost vector match.
 # ==============================================================================
 
 import glob
@@ -25,10 +22,7 @@ logger = logging.getLogger("chatbot-rag")
 
 
 class RAGPipeline:
-    """
-    Manages in-process ChromaDB vector store, document ingestion,
-    and contextual semantic search for the portfolio chatbot.
-    """
+    """Manages ChromaDB vector store, document ingestion, and semantic search."""
 
     def __init__(
         self,
@@ -50,9 +44,7 @@ class RAGPipeline:
 
     def get_collection(self) -> Collection:
         """
-        Safely retrieve or refresh the collection handle from ChromaDB.
-        Guarantees self-healing against stale handles if the database was
-        modified or refreshed externally.
+        Safely retrieve collection handle; re-acquires if cached handle is stale.
         """
         if self.client is None:
             self.client = chromadb.PersistentClient(path=self.persist_dir)
@@ -60,13 +52,13 @@ class RAGPipeline:
         if self.embedding_fn is None:
             self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
 
+        # Validate cached handle
         try:
             if self.collection is not None:
-                # Validate handle against ChromaDB engine
                 _ = self.collection.count()
                 return self.collection
         except Exception:  # noqa: BLE001
-            logger.warning("Cached collection handle is stale or invalid; re-acquiring...")
+            logger.warning("Cached collection handle is stale; re-acquiring...")
 
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
@@ -76,25 +68,21 @@ class RAGPipeline:
         return self.collection
 
     def initialize(self):
-        """Initialize ChromaDB client and ingest knowledge base documents."""
+        """Initialize ChromaDB client and index markdown files."""
         os.makedirs(self.persist_dir, exist_ok=True)
         logger.info("Initializing ChromaDB persistent client at %s", self.persist_dir)
 
-        # In-process ONNX embeddings (all-MiniLM-L6-v2)
-        # 100% self-contained: works regardless of Ollama status and runs fast on CPU
         if self.embedding_fn is None:
             self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
 
-        # In-process persistent ChromaDB instance
         self.client = chromadb.PersistentClient(path=self.persist_dir)
 
         try:
             self.collection = self.get_collection()
         except ValueError as exc:
+            # Handle embedding model dimension changes (e.g. 768 to 384)
             if "conflict" in str(exc).lower() or "dimensionality" in str(exc).lower():
-                logger.info(
-                    "Resetting collection due to embedding model upgrade: %s", exc
-                )
+                logger.info("Resetting collection for new embedding model: %s", exc)
                 self.client.delete_collection(name=self.collection_name)
                 self.collection = self.client.create_collection(
                     name=self.collection_name,
@@ -104,20 +92,17 @@ class RAGPipeline:
             else:
                 raise
 
-        # Ingest documents on startup
         self.ingest_markdown_files()
 
     def _chunk_markdown(self, filename: str, content: str) -> list[dict[str, Any]]:
         """
-        Split markdown content into semantic chunks based on headers.
-        Extracts top-level document title and prepends rich context headers
-        to maximize vector similarity during RAG retrieval.
+        Split markdown by ## and ### headers, prepend context tags, and drop empty chunks.
         """
         chunks: list[dict[str, Any]] = []
         base_name = os.path.basename(filename).replace(".md", "").capitalize()
         lines = content.split("\n")
 
-        # Extract top-level document title if available
+        # Extract top-level '# ' doc title
         doc_title = base_name
         for line in lines:
             if line.startswith("# ") and not line.startswith("## "):
@@ -131,11 +116,10 @@ class RAGPipeline:
             if line.startswith(("## ", "### ")):
                 if current_lines:
                     chunk_text = "\n".join(current_lines).strip()
-                    # Strip leading level-1 header if present to avoid empty title chunks
                     if chunk_text.startswith(f"# {doc_title}"):
                         chunk_text = chunk_text[len(f"# {doc_title}") :].strip()
 
-                    # Only register chunks with substantial content (ignore title-only blocks)
+                    # Filter out empty title-only chunks
                     if len(chunk_text) > 30:
                         chunks.append(
                             {
@@ -149,7 +133,7 @@ class RAGPipeline:
             else:
                 current_lines.append(line)
 
-        # Append final chunk
+        # Append final section
         if current_lines:
             chunk_text = "\n".join(current_lines).strip()
             if chunk_text.startswith(f"# {doc_title}"):
@@ -167,7 +151,7 @@ class RAGPipeline:
         return chunks
 
     def ingest_markdown_files(self):
-        """Read all .md files from data directory, chunk them, and index into ChromaDB."""
+        """Parse all .md files in data_dir and upsert into ChromaDB without dropping collection."""
         search_pattern = os.path.join(self.data_dir, "*.md")
         files = glob.glob(search_pattern)
 
@@ -178,14 +162,12 @@ class RAGPipeline:
         collection = self.get_collection()
         logger.info("Ingesting %d markdown files from %s...", len(files), self.data_dir)
 
-        # Clear existing records safely by ID to avoid invalidating the collection handle
+        # Clear existing chunk IDs safely (preserves collection UUID)
         try:
             existing = collection.get()
             existing_ids = existing.get("ids", [])
             if existing_ids:
-                logger.info(
-                    "Clearing %d existing chunks before re-indexing...", len(existing_ids)
-                )
+                logger.info("Clearing %d existing chunks...", len(existing_ids))
                 collection.delete(ids=existing_ids)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not clear existing chunks, will upsert: %s", exc)
@@ -203,34 +185,27 @@ class RAGPipeline:
                 base_name = os.path.basename(file_path).replace(".md", "")
 
                 for idx, chunk in enumerate(chunks):
-                    chunk_id = f"{base_name}_{idx}"
                     documents.append(chunk["text"])
                     metadatas.append(
                         {"source": chunk["source"], "section": chunk["section"]}
                     )
-                    ids.append(chunk_id)
+                    ids.append(f"{base_name}_{idx}")
 
             except Exception as exc:  # noqa: BLE001
-                logger.error("Failed to parse markdown file %s: %s", file_path, exc)
+                logger.error("Failed to parse %s: %s", file_path, exc)
 
         if documents:
             collection.upsert(documents=documents, metadatas=metadatas, ids=ids)
             logger.info(
-                "Successfully indexed %d chunks across %d documents into ChromaDB.",
-                len(documents),
-                len(files),
+                "Indexed %d chunks across %d documents.", len(documents), len(files)
             )
 
-    def retrieve_context(self, query: str, n_results: int = 4) -> str:
-        """
-        Query ChromaDB for the most semantically relevant chunks matching user query.
-        Returns a formatted string ready for LLM prompt augmentation.
-        """
+    def retrieve_context(self, query: str, n_results: int = 5) -> str:
+        """Query ChromaDB for top relevant chunks matching user query."""
         try:
             collection = self.get_collection()
             count = collection.count()
             if count == 0:
-                logger.warning("ChromaDB collection is empty.")
                 return ""
 
             results = collection.query(
@@ -241,19 +216,14 @@ class RAGPipeline:
             if not docs_list or not docs_list[0]:
                 return ""
 
-            retrieved_docs = docs_list[0]
-            context_blocks: list[str] = []
-            for doc in retrieved_docs:
-                context_blocks.append(f"---\n{doc}")
-
-            return "\n\n".join(context_blocks)
+            return "\n\n".join(f"---\n{doc}" for doc in docs_list[0])
 
         except Exception as exc:  # noqa: BLE001
             logger.error("Error retrieving context from ChromaDB: %s", exc)
             return ""
 
     def build_system_prompt(self, context: str) -> str:
-        """Construct a strict, grounded system prompt with retrieved context."""
+        """Construct grounded system prompt with strict anti-hallucination rules."""
         base_prompt = (
             "You are Haniff Kamal's official AI Portfolio Assistant.\n"
             "Your job is to provide accurate, concise, and professional answers to visitors, "
@@ -270,6 +240,10 @@ class RAGPipeline:
         )
 
         if context.strip():
-            return f"{base_prompt}\n\n=== VERIFIED PORTFOLIO CONTEXT ===\n{context}\n================================="
-        else:
-            return base_prompt
+            return (
+                f"{base_prompt}\n\n"
+                f"=== VERIFIED PORTFOLIO CONTEXT ===\n"
+                f"{context}\n"
+                f"================================="
+            )
+        return base_prompt
