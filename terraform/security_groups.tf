@@ -49,5 +49,3 @@ resource "aws_security_group" "web" {
     Name = "${var.project_name}-web-sg"
   }
 }
-
-s
