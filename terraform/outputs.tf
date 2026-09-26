@@ -1,0 +1,38 @@
+# ==============================================================================
+# Infrastructure Outputs: Operational & DNS Exports
+# ==============================================================================
+
+output "ec2_instance_id" {
+  description = "The EC2 Instance ID (used for AWS SSM Session Manager and Ansible inventory)"
+  value       = aws_instance.chatbot.id
+}
+
+output "ec2_public_ip" {
+  description = "The public IPv4 address of the EC2 instance (used for Cloudflare DNS mapping)"
+  value       = aws_instance.chatbot.public_ip
+}
+
+output "vpc_id" {
+  description = "The ID of the custom VPC"
+  value       = aws_vpc.main.id
+}
+
+output "public_subnet_id" {
+  description = "The ID of the public subnet"
+  value       = aws_subnet.public.id
+}
+
+output "security_group_id" {
+  description = "The ID of the web security group (Zero SSH ports)"
+  value       = aws_security_group.web.id
+}
+
+output "cost_saver_lambda_name" {
+  description = "Name of the automated FinOps Lambda shutdown function"
+  value       = aws_lambda_function.cost_saver.function_name
+}
+
+output "ssm_connect_command" {
+  description = "Command to connect directly into the EC2 instance via AWS SSM Session Manager"
+  value       = "aws ssm start-session --target ${aws_instance.chatbot.id} --region ${var.aws_region}"
+}
