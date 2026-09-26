@@ -14,7 +14,7 @@ terraform {
     bucket         = "haniff-invader"
     key            = "dev/chatbot.tfstate"
     region         = "ap-southeast-1"
-    dynamodb_table = "chatbot-tf-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
