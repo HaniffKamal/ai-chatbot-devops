@@ -45,12 +45,16 @@ crash.log
 crash.*.log
 *.tfvars
 *.tfvars.json
+*.tfvars.*
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 .terraformrc
 terraform.rc
+
+lambda/
+cost_saver.tf
 
 # OS & IDE
 .DS_Store
