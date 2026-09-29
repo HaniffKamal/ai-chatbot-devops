@@ -83,6 +83,16 @@ resource "aws_iam_role_policy_attachment" "lambda_attach" {
   policy_arn = aws_iam_policy.lambda_policy.arn
 }
 
+# CloudWatch Log Group for Lambda (Rule 2.3: FinOps 7-day retention & clean teardown)
+resource "aws_cloudwatch_log_group" "lambda_logs" {
+  name              = "/aws/lambda/${var.project_name}-auto-stop"
+  retention_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-lambda-logs"
+  }
+}
+
 # AWS Lambda Function
 resource "aws_lambda_function" "cost_saver" {
   filename         = data.archive_file.lambda_zip.output_path
@@ -92,6 +102,10 @@ resource "aws_lambda_function" "cost_saver" {
   runtime          = "python3.11"
   timeout          = 30
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+
+  depends_on = [
+    aws_cloudwatch_log_group.lambda_logs
+  ]
 
   environment {
     variables = {
