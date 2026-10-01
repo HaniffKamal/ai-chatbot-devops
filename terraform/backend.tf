@@ -11,10 +11,10 @@ terraform {
   required_version = ">= 1.16.0"
 
   backend "s3" {
-    bucket         = "haniff-invader"
-    key            = "dev/chatbot.tfstate"
-    region         = "ap-southeast-1"
-    use_lockfile   = true
-    encrypt        = true
+    bucket       = "haniff-invader"
+    key          = "dev/chatbot.tfstate"
+    region       = "ap-southeast-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }

@@ -47,5 +47,5 @@ variable "root_volume_size" {
 variable "auto_stop_cron" {
   description = "Amazon EventBridge cron expression for automated off-peak EC2 shutdown (Rule 2.3)"
   type        = string
-  default     = "cron(0 23 * * ? *)" # Daily at 23:00 UTC (07:00 MYT)
+  default     = "cron(0 14 * * ? *)" # Daily at 23:00 UTC (07:00 MYT)
 }
