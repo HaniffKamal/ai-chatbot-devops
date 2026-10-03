@@ -1,0 +1,21 @@
+---
+# Level 2 Practice Playbook: Understanding Tasks & Idempotency
+- name: Level 2 Practice Play
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Task 1 - Print a friendly greeting
+      ansible.builtin.debug:
+        msg: "Hello Haniff! Ansible is executing successfully!"
+
+    - name: Task 2 - Ensure a directory exists
+      ansible.builtin.file:
+        path: /tmp/ansible_practice_dir
+        state: directory
+
+    - name: Task 3 - Ensure a file exists with specific content
+      ansible.builtin.copy:
+        content: "Ansible is fully idempotent!\n"
+        dest: /tmp/ansible_practice_dir/message.txt
