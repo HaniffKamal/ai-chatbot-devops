@@ -49,3 +49,9 @@ variable "auto_stop_cron" {
   type        = string
   default     = "cron(0 14 * * ? *)" # Daily at 23:00 UTC (07:00 MYT)
 }
+
+variable "ssh_public_key_path" {
+  description = "Path to the local SSH public key for SSM-tunneled authentication (Rule 1.2)"
+  type        = string
+  default     = "~/.ssh/id_ed25519.pub"
+}
