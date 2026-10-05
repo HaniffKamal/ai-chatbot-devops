@@ -26,9 +26,21 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+# SSH Key Pair for secure authentication through AWS SSM Proxy Tunnel (Rule 1.2)
+# Cloud-init automatically places this into /home/ubuntu/.ssh/authorized_keys on boot.
+resource "aws_key_pair" "ansible" {
+  key_name   = "${var.project_name}-key"
+  public_key = file(pathexpand(var.ssh_public_key_path))
+
+  tags = {
+    Name = "${var.project_name}-key"
+  }
+}
+
 resource "aws_instance" "chatbot" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
+  key_name               = aws_key_pair.ansible.key_name
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.web.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
