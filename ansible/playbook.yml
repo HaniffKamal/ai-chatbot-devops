@@ -12,7 +12,6 @@
   gather_facts: true
 
   vars:
-    swap_file_size: "2G"
     app_directory: "/opt/chatbot"
     docker_packages:
       - docker-ce
@@ -41,40 +40,7 @@
         state: present
 
     # --------------------------------------------------------------------------
-    # 2. Swap Space Configuration (FinOps OOM Cushion for LLM / RAG)
-    # --------------------------------------------------------------------------
-    - name: Check if swapfile exists
-      ansible.builtin.stat:
-        path: /swapfile
-      register: swapfile_stat
-
-    - name: Allocate 2GB swap file
-      ansible.builtin.command: fallocate -l {{ swap_file_size }} /swapfile
-      when: not swapfile_stat.stat.exists
-
-    - name: Set secure permissions on swapfile
-      ansible.builtin.file:
-        path: /swapfile
-        owner: root
-        group: root
-        mode: "0600"
-
-    - name: Format swapfile as swap space
-      ansible.builtin.command: mkswap /swapfile
-      when: not swapfile_stat.stat.exists
-
-    - name: Enable swap space
-      ansible.builtin.command: swapon /swapfile
-      when: not swapfile_stat.stat.exists
-
-    - name: Ensure swap is mounted permanently in /etc/fstab
-      ansible.builtin.lineinfile:
-        path: /etc/fstab
-        line: "/swapfile none swap sw 0 0"
-        state: present
-
-    # --------------------------------------------------------------------------
-    # 3. Docker Official Repository & Engine Installation
+    # 2. Docker Official Repository & Engine Installation
     # --------------------------------------------------------------------------
     - name: Create directory for Docker apt keyrings
       ansible.builtin.file:
@@ -113,7 +79,7 @@
         append: true
 
     # --------------------------------------------------------------------------
-    # 4. Application Directory Setup
+    # 3. Application Directory Setup
     # --------------------------------------------------------------------------
     - name: Create application deployment directory
       ansible.builtin.file:
@@ -132,7 +98,7 @@
         mode: "0755"
 
     # --------------------------------------------------------------------------
-    # 5. Verification & Telemetry
+    # 4. Verification & Telemetry
     # --------------------------------------------------------------------------
     - name: Verify Docker version
       ansible.builtin.command: docker --version
