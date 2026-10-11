@@ -6,4 +6,7 @@
 # ==============================================================================
 
 [chatbot]
-${instance_id} ansible_user=${ssh_user}
+${instance_id}
+
+[chatbot:vars]
+ansible_user=${ssh_user}

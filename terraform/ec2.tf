@@ -7,7 +7,7 @@
 #   2. Dynamic AMI: Resolves latest official Ubuntu 24.04 LTS from Canonical.
 #   3. Zero SSH Keys: Uses IAM Instance Profile for SSM Session Manager.
 #   4. Free Tier Storage: 30 GB gp3 encrypted EBS root volume.
-#   5. User Data Bootstrap: Pre-configures Docker, Docker Compose, and SSM Agent.
+#   5. Thin Bootstrap: Minimal SSM agent startup; Docker & apps managed by Ansible.
 # ==============================================================================
 
 # Lookup latest official Ubuntu 24.04 LTS AMI from Canonical
@@ -59,45 +59,15 @@ resource "aws_instance" "chatbot" {
     }
   }
 
-  # Automated host initialization script
+  # Thin Bootstrap: Minimal initialization required for Ansible / SSM connectivity
+  # All software installation (Docker, workspace, etc.) is owned strictly by Ansible.
   user_data = <<-EOF
               #!/bin/bash
               set -e
-              export DEBIAN_FRONTEND=noninteractive
 
-              # 1. Update system packages
-              apt-get update && apt-get upgrade -y
-
-              # 2. Ensure Amazon SSM Agent is active (pre-installed on Ubuntu)
+              # Ensure Amazon SSM Agent is active (pre-installed on Ubuntu 26.04 LTS)
               systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service || true
               systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service || true
-
-              # 3. Install Docker and Docker Compose Plugin
-              apt-get install -y ca-certificates curl gnupg
-              install -m 0755 -d /etc/apt/keyrings
-              curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-              chmod a+r /etc/apt/keyrings/docker.asc
-
-              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-              apt-get update
-              apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-              # 4. Add ubuntu user to docker group
-              usermod -aG docker ubuntu
-
-              # 5. Create application and log directories
-              mkdir -p /opt/chatbot/logs
-              chown -R ubuntu:ubuntu /opt/chatbot
-
-              # 6. Create 2GB swap file as OOM memory buffer
-              fallocate -l 2G /swapfile
-              chmod 600 /swapfile
-              mkswap /swapfile
-              swapon /swapfile
-              echo '/swapfile none swap sw 0 0' >> /etc/fstab
-
-              echo "Initialization complete!"
               EOF
 
   tags = {
