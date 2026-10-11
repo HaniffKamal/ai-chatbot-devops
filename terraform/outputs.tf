@@ -36,14 +36,3 @@ output "ssm_connect_command" {
   description = "Command to connect directly into the EC2 instance via AWS SSM Session Manager"
   value       = "aws ssm start-session --target ${aws_instance.chatbot.id} --region ${var.aws_region}"
 }
-
-# ==============================================================================
-# Automated Ansible Inventory Generation (Industry Standard: .tftpl Template)
-# ==============================================================================
-resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/../ansible/inventory.ini"
-  content  = templatefile("${path.module}/templates/inventory.ini.tftpl", {
-    instance_id = aws_instance.chatbot.id
-    ssh_user    = "ubuntu"
-  })
-}
