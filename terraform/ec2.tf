@@ -4,20 +4,20 @@
 # Architectural Guardrails:
 #   1. Instance Selection: m7i-flex.large (2 vCPU, 8 GiB RAM) provides dedicated
 #      memory headroom for Ollama 8B LLM weights and in-process RAG embeddings.
-#   2. Dynamic AMI: Resolves latest official Ubuntu 24.04 LTS from Canonical.
+#   2. Dynamic AMI: Resolves latest official Ubuntu 26.04 LTS from Canonical.
 #   3. Zero SSH Keys: Uses IAM Instance Profile for SSM Session Manager.
 #   4. Free Tier Storage: 30 GB gp3 encrypted EBS root volume.
 #   5. Thin Bootstrap: Minimal SSM agent startup; Docker & apps managed by Ansible.
 # ==============================================================================
 
-# Lookup latest official Ubuntu 24.04 LTS AMI from Canonical
+# Lookup latest official Ubuntu 26.04 LTS AMI from Canonical
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-resolute-26.04-amd64-server-*"]
   }
 
   filter {

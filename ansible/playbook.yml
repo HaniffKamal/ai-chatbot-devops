@@ -1,7 +1,7 @@
 # ==============================================================================
 # Ansible Production Playbook: AI Chatbot Host Configuration
 # ==============================================================================
-# Target: AWS EC2 Instance (m7i-flex.large, Ubuntu 24.04 LTS)
+# Target: AWS EC2 Instance (m7i-flex.large, Ubuntu 26.04 LTS)
 # Connection: SSH tunneled over AWS SSM Session Manager (Rule 1.2: Zero Port 22)
 # Idempotency: All tasks declare desired state; re-running produces changed=0.
 # ==============================================================================
