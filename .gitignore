@@ -53,6 +53,9 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Ansible
+inventory.ini
+
 # OS & IDE
 .DS_Store
 Thumbs.db
