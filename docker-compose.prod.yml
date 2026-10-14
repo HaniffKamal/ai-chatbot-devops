@@ -1,0 +1,37 @@
+# ==============================================================================
+# Docker Compose: Production Environment Overrides (Strict Rule 3.2)
+# ==============================================================================
+# Architecture Guardrails:
+#   1. Registry Image: Pulls pre-built multi-stage image from GHCR (no on-host build).
+#   2. Cloud API Primary: Uses Groq Cloud API (llama-3.1-8b-instant) for sub-second
+#      low latency on CPU-only AWS EC2 instances, saving ~5GB RAM and 100% CPU.
+#   3. Lightweight Stack: Runs only FastAPI Backend and Nginx Frontend (no Ollama).
+#   4. Resource Safeguards: Sets memory & CPU limits to prevent server starvation.
+#   5. High Availability: unless-stopped restart policies on all containers.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ==============================================================================
+
+services:
+  backend:
+    image: ghcr.io/haniffkamal/chatbot-backend:latest
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - LLM_PROVIDER=groq
+      - GROQ_MODEL=llama-3.1-8b-instant
+      - OLLAMA_HOST=disabled
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2048M
+
+  frontend:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M

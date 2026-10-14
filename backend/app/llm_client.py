@@ -3,8 +3,8 @@
 # ==============================================================================
 # Architecture & DevOps Guardrails:
 #   1. High Availability (HA) Dual-Engine Pattern:
-#      - Primary: Local Ollama container with NVIDIA RTX GPU pass-through.
-#      - Fallback: Ultra-fast Cloud Groq API (OpenAI-compatible LPU inference).
+#      - Primary (Dev): Local Ollama container with NVIDIA RTX GPU pass-through.
+#      - Primary (Prod): Ultra-fast Cloud Groq API (OpenAI-compatible LPU inference).
 #   2. Graceful Degradation (Rule 4.1):
 #      - Unhandled HTTP 500 exceptions are never exposed to the client.
 #      - If all providers fail, a friendly status message is returned seamlessly.
@@ -64,7 +64,8 @@ class DualEngineLLM:
         - Binds dedicated connection and read timeouts to prevent hanging processes.
         """
         logger.info(
-            "Initializing Dual-Engine LLM client pool (Primary: %s, Groq Fallback: %s)",
+            "Initializing Dual-Engine LLM client pool (Provider: %s, Ollama: %s, Groq: %s)",
+            self.settings.LLM_PROVIDER,
             self.settings.OLLAMA_HOST,
             "Enabled" if self.settings.is_groq_enabled else "Disabled",
         )
@@ -192,7 +193,7 @@ class DualEngineLLM:
         }
 
         logger.info(
-            "Dispatching fallback prompt to Groq Cloud model '%s'",
+            "Dispatching prompt to Groq Cloud model '%s'",
             self.settings.GROQ_MODEL,
         )
         response = await self._groq_client.post(
@@ -223,67 +224,116 @@ class DualEngineLLM:
     ) -> LLMResult:
         """
         Executes dual-engine inference with automatic failover and graceful degradation:
-          Tier 1: Attempt local Ollama on RTX 3060 GPU.
-          Tier 2: On timeout or connection failure, fall back to Groq Cloud API.
-          Tier 3: On total failure, return friendly degraded message without 500 error.
+          - When LLM_PROVIDER == 'groq' (Production Mode on EC2 CPU):
+              Tier 1: Ultra-fast Cloud Groq API (sub-second LPU inference).
+              Tier 2: Local Ollama (if configured & reachable).
+              Tier 3: Graceful degradation message without 500 error.
+          - When LLM_PROVIDER == 'ollama' (Development Mode on RTX 3060):
+              Tier 1: Local Ollama container.
+              Tier 2: Cloud Groq API fallback.
+              Tier 3: Graceful degradation message without 500 error.
         """
         target_model = model or self.settings.DEFAULT_MODEL
         ollama_error: str | None = None
-
-        # ----------------------------------------------------------------------
-        # Tier 1: Primary Engine (Local Ollama)
-        # ----------------------------------------------------------------------
-        try:
-            reply = await self._query_ollama(
-                prompt=prompt,
-                system_prompt=system_prompt,
-                model_name=target_model,
-            )
-            return LLMResult(
-                text=reply,
-                model=target_model,
-                provider="ollama",
-                success=True,
-            )
-        except Exception as exc:  # noqa: BLE001
-            ollama_error = str(exc)
-            logger.warning(
-                "Primary engine (Ollama) failed: %s. Initiating fallback to Groq Cloud...",
-                exc,
-            )
-
-        # ----------------------------------------------------------------------
-        # Tier 2: Fallback Engine (Cloud Groq)
-        # ----------------------------------------------------------------------
         groq_error: str | None = None
-        if self.settings.is_groq_enabled:
+
+        # ======================================================================
+        # Mode A: Groq API as Primary (Production EC2 / CPU Host)
+        # ======================================================================
+        if self.settings.LLM_PROVIDER.lower() == "groq":
+            if self.settings.is_groq_enabled:
+                try:
+                    reply = await self._query_groq(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                    )
+                    return LLMResult(
+                        text=reply,
+                        model=self.settings.GROQ_MODEL,
+                        provider="groq",
+                        success=True,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    groq_error = str(exc)
+                    logger.warning(
+                        "Primary engine (Groq) failed: %s. Initiating fallback...", exc
+                    )
+            else:
+                groq_error = "GROQ_API_KEY is missing or empty"
+                logger.warning("Groq primary skipped: %s", groq_error)
+
+            # Fallback to local Ollama if host is configured
+            if self.settings.OLLAMA_HOST and self.settings.OLLAMA_HOST.lower() != "disabled":
+                try:
+                    reply = await self._query_ollama(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                        model_name=target_model,
+                    )
+                    logger.info("Fallback to Ollama succeeded using model '%s'", target_model)
+                    return LLMResult(
+                        text=reply,
+                        model=target_model,
+                        provider="ollama",
+                        success=True,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    ollama_error = str(exc)
+                    logger.error("Ollama fallback also failed: %s", exc)
+
+        # ======================================================================
+        # Mode B: Local Ollama as Primary (Local Development with GPU)
+        # ======================================================================
+        else:
             try:
-                reply = await self._query_groq(
+                reply = await self._query_ollama(
                     prompt=prompt,
                     system_prompt=system_prompt,
-                )
-                logger.info(
-                    "Fallback to Groq succeeded using model '%s'",
-                    self.settings.GROQ_MODEL,
+                    model_name=target_model,
                 )
                 return LLMResult(
                     text=reply,
-                    model=self.settings.GROQ_MODEL,
-                    provider="groq",
+                    model=target_model,
+                    provider="ollama",
                     success=True,
                 )
             except Exception as exc:  # noqa: BLE001
-                groq_error = str(exc)
-                logger.error("Cloud fallback (Groq) also failed: %s", exc)
-        else:
-            groq_error = "GROQ_API_KEY is not configured"
-            logger.warning("Groq fallback skipped: %s", groq_error)
+                ollama_error = str(exc)
+                logger.warning(
+                    "Primary engine (Ollama) failed: %s. Initiating fallback to Groq Cloud...",
+                    exc,
+                )
 
-        # ----------------------------------------------------------------------
+            # Fallback to Cloud Groq
+            if self.settings.is_groq_enabled:
+                try:
+                    reply = await self._query_groq(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                    )
+                    logger.info(
+                        "Fallback to Groq succeeded using model '%s'",
+                        self.settings.GROQ_MODEL,
+                    )
+                    return LLMResult(
+                        text=reply,
+                        model=self.settings.GROQ_MODEL,
+                        provider="groq",
+                        success=True,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    groq_error = str(exc)
+                    logger.error("Cloud fallback (Groq) also failed: %s", exc)
+            else:
+                groq_error = "GROQ_API_KEY is not configured"
+                logger.warning("Groq fallback skipped: %s", groq_error)
+
+        # ======================================================================
         # Tier 3: Graceful Degradation (Rule 4.1)
-        # ----------------------------------------------------------------------
+        # ======================================================================
         logger.error(
-            "Dual-engine inference failed completely. (Ollama: %s | Groq: %s)",
+            "Dual-engine inference failed completely. (Primary: %s | Ollama: %s | Groq: %s)",
+            self.settings.LLM_PROVIDER,
             ollama_error,
             groq_error,
         )

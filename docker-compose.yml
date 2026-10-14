@@ -15,6 +15,8 @@ services:
     image: ollama/ollama:latest
     container_name: chatbot-ollama
     restart: unless-stopped          # Automatically restart on failure or reboot
+    profiles:
+      - local
 
     ports:
       - "11434:11434"                # Expose Ollama API to host for direct inspection
@@ -24,18 +26,8 @@ services:
       # Without this volume, models would be deleted every time the container stops!
       - ollama_data:/root/.ollama
 
-    # Native NVIDIA GPU Pass-Through Configuration
-    # Uses nvidia-container-toolkit to grant container access to your RTX 3060 GPU
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1               # Number of GPUs to allocate
-              capabilities: [gpu]
-
     environment:
-      # Keep model loaded in GPU VRAM for 24 hours (prevents cold-start delays on subsequent requests)
+      # Keep model loaded in memory for 24 hours (prevents cold-start delays on subsequent requests)
       - OLLAMA_KEEP_ALIVE=24h
 
     networks:
@@ -61,11 +53,13 @@ services:
 
     # Fallback default values if .env file is missing or variables are unset
     environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}               # Default engine: ollama locally, groq in prod
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}     # Internal Docker DNS name for Ollama
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-llama3.1:8b}         # Target model to query
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-llama3.2:1b}         # Target model to query
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-60.0}              # Timeout for LLM generation in seconds
-      - GROQ_API_KEY=${GROQ_API_KEY:-}                     # Optional cloud fallback API key
-      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-20b}       # Fast cloud fallback model
+      - GROQ_API_KEY=${GROQ_API_KEY:-}                     # Cloud Groq API key
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}      # Official fast cloud model
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://localhost:80,https://haniffkamal.my}
 
     volumes:
       # Mount application source code for live development
@@ -79,9 +73,10 @@ services:
       # Persist ONNX embedding model cache across container recreations
       - chroma_models:/home/appuser/.cache
 
-    # Startup order: ensure Ollama container starts before the backend boots
+    # Startup order: if Ollama is running (local profile), start it before backend
     depends_on:
-      - ollama
+      ollama:
+        required: false
 
     networks:
       - chatbot-net
