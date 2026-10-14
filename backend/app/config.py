@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     # GROQ_BASE_URL: Standard OpenAI-compatible REST endpoint for Groq API.
     # GROQ_TIMEOUT: Maximum seconds to wait for cloud response before degradation.
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     GROQ_TIMEOUT: float = 30.0
 

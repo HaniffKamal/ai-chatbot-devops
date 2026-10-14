@@ -20,7 +20,7 @@ services:
     environment:
       - ENVIRONMENT=production
       - LLM_PROVIDER=groq
-      - GROQ_MODEL=llama-3.1-8b-instant
+      - GROQ_MODEL=openai/gpt-oss-20b
       - OLLAMA_HOST=disabled
     deploy:
       resources:
