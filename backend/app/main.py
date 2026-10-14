@@ -123,6 +123,7 @@ class HealthResponse(BaseModel):
     """Schema for the healthcheck verification endpoint."""
 
     status: str
+    active_provider: str = "ollama"
     ollama_connected: bool
     groq_configured: bool
     groq_connected: bool
@@ -141,8 +142,9 @@ async def health_check():
     groq_ok = False
 
     if dual_engine:
-        ollama_ok = await dual_engine.check_ollama_health()
         groq_ok = await dual_engine.check_groq_health()
+        if settings.OLLAMA_HOST and settings.OLLAMA_HOST.lower() != "disabled":
+            ollama_ok = await dual_engine.check_ollama_health()
 
     rag_chunks = 0
     if rag_pipeline:
@@ -153,11 +155,12 @@ async def health_check():
 
     return HealthResponse(
         status="ok",
+        active_provider=settings.LLM_PROVIDER,
         ollama_connected=ollama_ok,
         groq_configured=settings.is_groq_enabled,
         groq_connected=groq_ok,
-        configured_model=settings.DEFAULT_MODEL,
-        fallback_model=settings.GROQ_MODEL,
+        configured_model=settings.GROQ_MODEL if settings.LLM_PROVIDER.lower() == "groq" else settings.DEFAULT_MODEL,
+        fallback_model=settings.DEFAULT_MODEL if settings.LLM_PROVIDER.lower() == "groq" else settings.GROQ_MODEL,
         rag_indexed_chunks=rag_chunks,
     )
 

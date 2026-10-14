@@ -14,3 +14,13 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       - ENVIRONMENT=development
+
+  # Native NVIDIA GPU Pass-Through for local development with RTX 3060
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

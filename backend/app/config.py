@@ -36,13 +36,15 @@ class Settings(BaseSettings):
     )
 
     # --------------------------------------------------------------------------
-    # Core Application Environment
+    # Core Application Environment & Provider Preference
     # --------------------------------------------------------------------------
-    # Options: "development", "staging", "production"
+    # ENVIRONMENT: "development", "staging", "production"
+    # LLM_PROVIDER: "ollama" (local GPU for dev) or "groq" (cloud API for CPU host in prod)
     ENVIRONMENT: str = "development"
+    LLM_PROVIDER: str = "ollama"
 
     # --------------------------------------------------------------------------
-    # Local Ollama Inference Engine (Primary Provider)
+    # Local Ollama Inference Engine (Primary Provider in Local Dev)
     # --------------------------------------------------------------------------
     # OLLAMA_HOST: Internal Docker network DNS name and port for Ollama daemon.
     # DEFAULT_MODEL: Default lightweight instruction model to query locally.
@@ -66,11 +68,11 @@ class Settings(BaseSettings):
     KNOWLEDGE_DATA_DIR: str = "/app/data"
 
     # --------------------------------------------------------------------------
-    # Cloud Groq Inference Engine (High-Speed Fallback Provider)
+    # Cloud Groq Inference Engine (High-Speed Provider / Production Primary)
     # --------------------------------------------------------------------------
     # GROQ_API_KEY: Secret API key for Groq Cloud. Kept empty by default; loaded
     #               dynamically from .env at runtime.
-    # GROQ_MODEL: Fast, open-source model running on Groq's custom LPU hardware.
+    # GROQ_MODEL: Official ultra-fast model running on Groq's custom LPU hardware.
     # GROQ_BASE_URL: Standard OpenAI-compatible REST endpoint for Groq API.
     # GROQ_TIMEOUT: Maximum seconds to wait for cloud response before degradation.
     GROQ_API_KEY: str = ""
