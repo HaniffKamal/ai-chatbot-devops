@@ -15,7 +15,7 @@
 
 services:
   backend:
-    image: ghcr.io/haniffkamal/chatbot-backend:latest
+    image: ghcr.io/haniffkamal/chatbot:latest
     restart: unless-stopped
     environment:
       - ENVIRONMENT=production
