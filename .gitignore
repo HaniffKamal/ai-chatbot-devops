@@ -1,5 +1,6 @@
 # Environment and credentials
 .env*
+!.env.example
 *.env
 *.pem
 *.key
