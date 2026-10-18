@@ -78,6 +78,9 @@
         groups: docker
         append: true
 
+    - name: Reset SSH connection so docker group takes effect
+      ansible.builtin.meta: reset_connection
+
     # --------------------------------------------------------------------------
     # 3. Application Directory Setup
     # --------------------------------------------------------------------------
