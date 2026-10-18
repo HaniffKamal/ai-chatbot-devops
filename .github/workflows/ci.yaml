@@ -19,7 +19,7 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
-      - "docker-compose*.yml"
+      - "docker-compose*.yaml"
       - ".github/workflows/**"
   pull_request:
     branches:
@@ -27,7 +27,7 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
-      - "docker-compose*.yml"
+      - "docker-compose*.yaml"
 
 # Minimum permissions needed for GHCR push (Principle of Least Privilege)
 permissions:

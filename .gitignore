@@ -1,6 +1,7 @@
 # Environment and credentials
 .env*
 !.env.example
+!.env.j2
 *.env
 *.pem
 *.key
