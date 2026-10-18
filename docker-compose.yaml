@@ -52,12 +52,6 @@ services:
       - .env
 
     volumes:
-      # Mount application source code for live development
-      - ./backend/app:/app/app:ro
-      # Mount knowledge base markdown files (read-only for live updates)
-      - ./backend/data:/app/data:ro
-      # Mount operational and diagnostic utility scripts
-      - ./scripts:/app/scripts:ro
       # Persist embedded ChromaDB vector storage
       - chroma_data:/app/chroma_db
       # Persist ONNX embedding model cache across container recreations

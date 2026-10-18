@@ -17,10 +17,6 @@ services:
   backend:
     image: ghcr.io/haniffkamal/chatbot:latest
     restart: unless-stopped
-    environment:
-      - ENVIRONMENT=production
-      - LLM_PROVIDER=groq
-      - OLLAMA_HOST=disabled
     deploy:
       resources:
         limits:
