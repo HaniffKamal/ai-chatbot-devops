@@ -1,0 +1,119 @@
+# ==============================================================================
+# Ansible Continuous Deployment Playbook: AI Chatbot Production
+# ==============================================================================
+# Target: AWS EC2 Instance (m7i-flex.large, Ubuntu 26.04 LTS)
+# Connection: SSH tunneled over AWS SSM Session Manager (Rule 1.2: Zero Port 22)
+# Speed: Fast application release (3-10 seconds, zero apt package overhead)
+# Idempotency: All tasks declare desired state; re-running produces changed=0.
+# ==============================================================================
+
+- name: Deploy AI Chatbot to Production (AWS EC2)
+  hosts: chatbot
+  remote_user: ubuntu
+  gather_facts: false
+
+  vars:
+    app_directory: "/opt/chatbot"
+    groq_model: "openai/gpt-oss-20b"
+    allowed_origins: "http://localhost,http://localhost:80,https://haniffkamal.my"
+
+  tasks:
+    # --------------------------------------------------------------------------
+    # 1. Environment Secrets Resolution (Local Controller)
+    # --------------------------------------------------------------------------
+    - name: Check if local .env exists
+      ansible.builtin.stat:
+        path: "../.env"
+      delegate_to: localhost
+      register: local_env_stat
+      run_once: true
+
+    - name: Resolve GROQ_API_KEY from environment, CLI, or local .env
+      ansible.builtin.set_fact:
+        groq_api_key: >-
+          {{
+            groq_api_key
+            | default(lookup('ansible.builtin.env', 'GROQ_API_KEY'), true)
+            | default(
+                (lookup('ansible.builtin.file', '../.env') | regex_search('GROQ_API_KEY=([^\r\n]+)', '\\1') | first)
+                if local_env_stat.stat.exists else '',
+                true
+              )
+          }}
+      run_once: true
+
+    - name: Validate that GROQ_API_KEY is present
+      ansible.builtin.assert:
+        that:
+          - groq_api_key is defined
+          - groq_api_key | length > 10
+        fail_msg: "GROQ_API_KEY is missing! Please configure it in .env or export GROQ_API_KEY in your shell environment."
+
+    # --------------------------------------------------------------------------
+    # 2. File Synchronization & Configuration
+    # --------------------------------------------------------------------------
+    - name: Deploy Docker Compose specification files
+      ansible.builtin.copy:
+        src: "../{{ item }}"
+        dest: "{{ app_directory }}/{{ item }}"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0644"
+      loop:
+        - docker-compose.yml
+        - docker-compose.prod.yml
+
+    - name: Deploy frontend static assets and Nginx configuration
+      ansible.builtin.copy:
+        src: "../frontend"
+        dest: "{{ app_directory }}/"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Render production .env from Jinja2 template (Strict 0600 permissions)
+      ansible.builtin.template:
+        src: "templates/.env.j2"
+        dest: "{{ app_directory }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    # --------------------------------------------------------------------------
+    # 3. Container Orchestration & Rollout
+    # --------------------------------------------------------------------------
+    - name: Pull latest production image from GHCR
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+        chdir: "{{ app_directory }}"
+
+    - name: Start or update production containers
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+        chdir: "{{ app_directory }}"
+
+    # --------------------------------------------------------------------------
+    # 4. Automated Post-Deployment Verification Gate
+    # --------------------------------------------------------------------------
+    - name: Wait for Nginx and FastAPI services to report healthy
+      ansible.builtin.uri:
+        url: "http://localhost/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: health_check
+      retries: 12
+      delay: 5
+      until: health_check.status == 200
+
+    - name: Display live service verification details
+      ansible.builtin.debug:
+        msg:
+          - "===================================================="
+          - "🚀 DEPLOYMENT COMPLETED SUCCESSFULLY!"
+          - "===================================================="
+          - "Service Status:   {{ health_check.json.status }}"
+          - "Active Provider:  {{ health_check.json.active_provider }}"
+          - "Environment:      {{ health_check.json.environment }}"
+          - "Chroma Records:   {{ health_check.json.chroma_records }}"
+          - "===================================================="
