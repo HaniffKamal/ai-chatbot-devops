@@ -4,9 +4,10 @@ name: CI/CD Pipeline - AI Chatbot Platform
 # GitHub Actions CI/CD Pipeline
 # ==============================================================================
 # Architecture & DevOps Guardrails:
-#   1. Quality Gate: Runs full automated pytest suite before any image build.
-#   2. Zero Manual Secrets: Uses native GITHUB_TOKEN to authenticate with GHCR.
-#   3. GitHub Container Registry (GHCR): Builds multi-stage slim image in cloud runners.
+#   1. Quality Gate: Always runs automated pytest suite on any repository change.
+#   2. Smart Path Filtering: Detects file changes using dorny/paths-filter@v4 (Node 24).
+#      Only triggers container builds when 'backend/**' files are modified.
+#   3. Zero Manual Secrets: Uses native GITHUB_TOKEN to authenticate with GHCR.
 #   4. Dual Tagging: Tags both :latest and :<commit-sha> for release traceability.
 #   5. High-Speed Layer Caching: Utilizes GitHub Actions cache (type=gha) to accelerate builds.
 # ==============================================================================
@@ -40,7 +41,28 @@ env:
 
 jobs:
   # ----------------------------------------------------------------------------
-  # Job 1: Automated Testing & Verification Gate
+  # Job 1: Detect File Changes (Smart Path Filtering)
+  # ----------------------------------------------------------------------------
+  changes:
+    name: Detect Changed Components
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Check for backend modifications
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci.yaml'
+
+  # ----------------------------------------------------------------------------
+  # Job 2: Automated Testing & Verification Gate (Always Runs on Code Changes)
   # ----------------------------------------------------------------------------
   test:
     name: Run Unit & Integration Tests
@@ -73,13 +95,15 @@ jobs:
           pytest -v --tb=short
 
   # ----------------------------------------------------------------------------
-  # Job 2: Build & Push Docker Image to GHCR (Phase 4 Milestone)
+  # Job 3: Build & Push Docker Image to GHCR (Selective Execution)
   # ----------------------------------------------------------------------------
   build-and-push:
     name: Build & Push Image to GHCR
-    needs: test
+    needs: [test, changes]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.backend == 'true') ||
+      github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout repository
