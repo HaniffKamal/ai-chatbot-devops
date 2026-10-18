@@ -14,6 +14,13 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       - ENVIRONMENT=development
+    volumes:
+      # Mount application source code for live development
+      - ./backend/app:/app/app:ro
+      # Mount knowledge base markdown files (read-only for live updates)
+      - ./backend/data:/app/data:ro
+      # Mount operational and diagnostic utility scripts
+      - ./scripts:/app/scripts:ro
 
   # Native NVIDIA GPU Pass-Through for local development with RTX 3060
   ollama:
