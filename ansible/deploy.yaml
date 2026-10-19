@@ -14,32 +14,14 @@
 
   vars:
     app_directory: "/opt/chatbot"
-    groq_model: "openai/gpt-oss-20b"
-    allowed_origins: "http://localhost,http://localhost:80,https://haniffkamal.my"
 
   tasks:
     # --------------------------------------------------------------------------
     # 1. Environment Secrets Resolution (Local Controller)
     # --------------------------------------------------------------------------
-    - name: Check if local .env exists
-      ansible.builtin.stat:
-        path: "../.env"
-      delegate_to: localhost
-      register: local_env_stat
-      run_once: true
-
-    - name: Resolve GROQ_API_KEY from environment, CLI, or local .env
+    - name: Read GROQ_API_KEY directly from local .env
       ansible.builtin.set_fact:
-        groq_api_key: >-
-          {{
-            groq_api_key
-            | default(lookup('ansible.builtin.env', 'GROQ_API_KEY'), true)
-            | default(
-                (lookup('ansible.builtin.file', '../.env') | regex_search('GROQ_API_KEY=([^\r\n]+)', '\\1') | first)
-                if local_env_stat.stat.exists else '',
-                true
-              )
-          }}
+        groq_api_key: "{{ lookup('ansible.builtin.file', '../.env') | regex_search('GROQ_API_KEY=([^\r\n]+)', '\\1') | first }}"
       run_once: true
 
     - name: Validate that GROQ_API_KEY is present
@@ -47,7 +29,8 @@
         that:
           - groq_api_key is defined
           - groq_api_key | length > 10
-        fail_msg: "GROQ_API_KEY is missing! Please configure it in .env or export GROQ_API_KEY in your shell environment."
+        fail_msg: "GROQ_API_KEY is missing from your local .env file! Please check /home/invader/chatbot/.env"
+
 
     # --------------------------------------------------------------------------
     # 2. File Synchronization & Configuration
