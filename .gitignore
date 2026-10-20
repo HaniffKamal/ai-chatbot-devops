@@ -74,3 +74,4 @@ blueprint*.md
 .agent/
 AGENTS.md
 Tips_and_Knowledge.md
+CONTEXT_HANDOVER.md

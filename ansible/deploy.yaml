@@ -69,11 +69,21 @@
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.yaml -f docker-compose.prod.yaml pull
         chdir: "{{ app_directory }}"
+      register: pull_result
+      changed_when: >
+        ('Pulled' in (pull_result.stdout + pull_result.stderr)) or
+        ('Downloaded newer image' in (pull_result.stdout + pull_result.stderr))
 
     - name: Start or update production containers
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d --remove-orphans
         chdir: "{{ app_directory }}"
+      register: up_result
+      changed_when: >
+        ('Create' in (up_result.stdout + up_result.stderr)) or
+        ('Recreate' in (up_result.stdout + up_result.stderr)) or
+        ('Start' in (up_result.stdout + up_result.stderr)) or
+        ('Remove' in (up_result.stdout + up_result.stderr))
 
     # --------------------------------------------------------------------------
     # 4. Automated Post-Deployment Verification Gate
@@ -95,8 +105,9 @@
           - "===================================================="
           - "🚀 DEPLOYMENT COMPLETED SUCCESSFULLY!"
           - "===================================================="
-          - "Service Status:   {{ health_check.json.status }}"
-          - "Active Provider:  {{ health_check.json.active_provider }}"
-          - "Environment:      {{ health_check.json.environment }}"
-          - "Chroma Records:   {{ health_check.json.chroma_records }}"
+          - "Service Status:     {{ health_check.json.status }}"
+          - "Active Provider:    {{ health_check.json.active_provider }}"
+          - "Configured Model:   {{ health_check.json.configured_model }}"
+          - "Groq Connected:     {{ health_check.json.groq_connected }}"
+          - "RAG Indexed Chunks: {{ health_check.json.rag_indexed_chunks }}"
           - "===================================================="
