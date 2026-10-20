@@ -63,27 +63,17 @@
         mode: "0600"
 
     # --------------------------------------------------------------------------
-    # 3. Container Orchestration & Rollout
+    # 3. Container Orchestration & Rollout (Native Docker Compose v2)
     # --------------------------------------------------------------------------
-    - name: Pull latest production image from GHCR
-      ansible.builtin.command:
-        cmd: docker compose -f docker-compose.yaml -f docker-compose.prod.yaml pull
-        chdir: "{{ app_directory }}"
-      register: pull_result
-      changed_when: >
-        ('Pulled' in (pull_result.stdout + pull_result.stderr)) or
-        ('Downloaded newer image' in (pull_result.stdout + pull_result.stderr))
-
     - name: Start or update production containers
-      ansible.builtin.command:
-        cmd: docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d --remove-orphans
-        chdir: "{{ app_directory }}"
-      register: up_result
-      changed_when: >
-        ('Create' in (up_result.stdout + up_result.stderr)) or
-        ('Recreate' in (up_result.stdout + up_result.stderr)) or
-        ('Start' in (up_result.stdout + up_result.stderr)) or
-        ('Remove' in (up_result.stdout + up_result.stderr))
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_directory }}"
+        files:
+          - docker-compose.yaml
+          - docker-compose.prod.yaml
+        state: present
+        pull: policy
+        remove_orphans: true
 
     # --------------------------------------------------------------------------
     # 4. Automated Post-Deployment Verification Gate
