@@ -92,3 +92,14 @@ def test_rag_pipeline_retrieval(client: TestClient):
     assert "DevOps" in context or "Docker" in context or "AWS" in context, (
         "Expected DevOps or Cloud tools in retrieved context"
     )
+
+
+def test_chat_returns_503_when_llm_client_unavailable(client: TestClient, monkeypatch):
+    """Verify the endpoint fails fast with 503 if the LLM client was never initialized."""
+    import app.main
+
+    monkeypatch.setattr(app.main, "dual_engine", None)
+
+    response = client.post("/api/chat", json={"message": "Hello"})
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
