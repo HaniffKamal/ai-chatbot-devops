@@ -98,10 +98,11 @@ jobs:
         run: ruff format --check .
 
       - name: Execute pytest with coverage
-        # Coverage is reported, not enforced yet. Raise the bar once the number
-        # is known and stable: add `--cov-fail-under=<value>`.
+        # Hard gate: the suite sits at ~79% total. 75 leaves headroom for the
+        # dev-only Ollama paths (OLLAMA_HOST=disabled in production) that the
+        # Groq-only test suite intentionally does not exercise.
         run: |
-          pytest -v --tb=short --cov=app --cov-report=term-missing
+          pytest -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=75
 
   # ----------------------------------------------------------------------------
   # Job 3: Build & Push Docker Image to GHCR (Selective Execution)
