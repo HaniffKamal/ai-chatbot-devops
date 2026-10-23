@@ -132,5 +132,6 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: ghcr.io/haniffkamal/chatbot:latest
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
