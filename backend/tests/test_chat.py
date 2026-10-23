@@ -10,9 +10,10 @@
 
 from unittest.mock import AsyncMock
 
-from app.llm_client import LLMResult
 from fastapi import status
 from fastapi.testclient import TestClient
+
+from app.llm_client import LLMResult
 
 
 def test_chat_valid_message_returns_success(
@@ -88,6 +89,6 @@ def test_rag_pipeline_retrieval(client: TestClient):
     context = app.main.rag_pipeline.retrieve_context(query, n_results=5)
 
     assert len(context) > 0, "Expected non-empty RAG context"
-    assert (
-        "DevOps" in context or "Docker" in context or "AWS" in context
-    ), "Expected DevOps or Cloud tools in retrieved context"
+    assert "DevOps" in context or "Docker" in context or "AWS" in context, (
+        "Expected DevOps or Cloud tools in retrieved context"
+    )

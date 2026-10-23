@@ -43,6 +43,4 @@ def test_health_reports_positive_rag_chunks(client: TestClient):
     response = client.get("/health")
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
-    assert (
-        data["rag_indexed_chunks"] > 0
-    ), "Expected at least 1 indexed chunk in knowledge base"
+    assert data["rag_indexed_chunks"] > 0, "Expected at least 1 indexed chunk in knowledge base"

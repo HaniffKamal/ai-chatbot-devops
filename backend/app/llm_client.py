@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
 from app.config import Settings, settings
 
 logger = logging.getLogger("chatbot-llm")
@@ -125,9 +126,7 @@ class DualEngineLLM:
             return False
         try:
             headers = {"Authorization": f"Bearer {self.settings.GROQ_API_KEY}"}
-            response = await self._groq_client.get(
-                "/models", headers=headers, timeout=5.0
-            )
+            response = await self._groq_client.get("/models", headers=headers, timeout=5.0)
             return response.status_code == 200
         except Exception as exc:  # noqa: BLE001
             logger.warning("Groq health check probe failed: %s", exc)
@@ -136,9 +135,7 @@ class DualEngineLLM:
     # --------------------------------------------------------------------------
     # Low-Level Engine Dispatchers
     # --------------------------------------------------------------------------
-    async def _query_ollama(
-        self, prompt: str, system_prompt: str, model_name: str
-    ) -> str:
+    async def _query_ollama(self, prompt: str, system_prompt: str, model_name: str) -> str:
         """
         Dispatches inference request to local Ollama container via `/api/generate`.
         Extracts the response string from the returned JSON payload.
@@ -255,9 +252,7 @@ class DualEngineLLM:
                     )
                 except Exception as exc:  # noqa: BLE001
                     groq_error = str(exc)
-                    logger.warning(
-                        "Primary engine (Groq) failed: %s. Initiating fallback...", exc
-                    )
+                    logger.warning("Primary engine (Groq) failed: %s. Initiating fallback...", exc)
             else:
                 groq_error = "GROQ_API_KEY is missing or empty"
                 logger.warning("Groq primary skipped: %s", groq_error)

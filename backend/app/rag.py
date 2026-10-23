@@ -178,7 +178,7 @@ class RAGPipeline:
 
         for file_path in files:
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read()
 
                 chunks = self._chunk_markdown(file_path, content)
@@ -186,9 +186,7 @@ class RAGPipeline:
 
                 for idx, chunk in enumerate(chunks):
                     documents.append(chunk["text"])
-                    metadatas.append(
-                        {"source": chunk["source"], "section": chunk["section"]}
-                    )
+                    metadatas.append({"source": chunk["source"], "section": chunk["section"]})
                     ids.append(f"{base_name}_{idx}")
 
             except Exception as exc:  # noqa: BLE001
@@ -196,9 +194,7 @@ class RAGPipeline:
 
         if documents:
             collection.upsert(documents=documents, metadatas=metadatas, ids=ids)
-            logger.info(
-                "Indexed %d chunks across %d documents.", len(documents), len(files)
-            )
+            logger.info("Indexed %d chunks across %d documents.", len(documents), len(files))
 
     def retrieve_context(self, query: str, n_results: int = 5) -> str:
         """Query ChromaDB for top relevant chunks matching user query."""
@@ -208,9 +204,7 @@ class RAGPipeline:
             if count == 0:
                 return ""
 
-            results = collection.query(
-                query_texts=[query], n_results=min(n_results, count)
-            )
+            results = collection.query(query_texts=[query], n_results=min(n_results, count))
 
             docs_list = results.get("documents")
             if not docs_list or not docs_list[0]:

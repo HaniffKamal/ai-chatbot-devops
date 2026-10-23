@@ -12,12 +12,13 @@
 import logging
 from contextlib import asynccontextmanager
 
-from app.config import settings
-from app.llm_client import DualEngineLLM
-from app.rag import RAGPipeline
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+from app.config import settings
+from app.llm_client import DualEngineLLM
+from app.rag import RAGPipeline
 
 # ------------------------------------------------------------------------------
 # 1. Structured Application Logging
@@ -40,9 +41,7 @@ rag_pipeline: RAGPipeline | None = None
 async def lifespan(app: FastAPI):
     """Manage lifecycle of Dual-Engine LLM pool and in-process ChromaDB vector store."""
     global dual_engine, rag_pipeline
-    logger.info(
-        "Starting AI Chatbot Backend in '%s' environment...", settings.ENVIRONMENT
-    )
+    logger.info("Starting AI Chatbot Backend in '%s' environment...", settings.ENVIRONMENT)
 
     # 1. Initialize Dual-Engine LLM Connection Pools
     dual_engine = DualEngineLLM(app_settings=settings)
@@ -159,8 +158,12 @@ async def health_check():
         ollama_connected=ollama_ok,
         groq_configured=settings.is_groq_enabled,
         groq_connected=groq_ok,
-        configured_model=settings.GROQ_MODEL if settings.LLM_PROVIDER.lower() == "groq" else settings.DEFAULT_MODEL,
-        fallback_model=settings.DEFAULT_MODEL if settings.LLM_PROVIDER.lower() == "groq" else settings.GROQ_MODEL,
+        configured_model=settings.GROQ_MODEL
+        if settings.LLM_PROVIDER.lower() == "groq"
+        else settings.DEFAULT_MODEL,
+        fallback_model=settings.DEFAULT_MODEL
+        if settings.LLM_PROVIDER.lower() == "groq"
+        else settings.GROQ_MODEL,
         rag_indexed_chunks=rag_chunks,
     )
 
@@ -185,9 +188,7 @@ async def chat_endpoint(request: ChatRequest):
     system_prompt = ""
     if rag_pipeline:
         try:
-            retrieved_context = rag_pipeline.retrieve_context(
-                request.message, n_results=5
-            )
+            retrieved_context = rag_pipeline.retrieve_context(request.message, n_results=5)
             system_prompt = rag_pipeline.build_system_prompt(retrieved_context)
             logger.info(
                 "RAG context retrieved (%d chars) for query: '%s'",

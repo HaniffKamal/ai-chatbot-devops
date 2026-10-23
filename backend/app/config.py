@@ -96,11 +96,7 @@ class Settings(BaseSettings):
         Dynamically splits the comma-separated ALLOWED_ORIGINS string into a clean
         Python list of trimmed URLs required by FastAPI's CORSMiddleware.
         """
-        return [
-            origin.strip()
-            for origin in self.ALLOWED_ORIGINS.split(",")
-            if origin.strip()
-        ]
+        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
     @property
     def is_groq_enabled(self) -> bool:
