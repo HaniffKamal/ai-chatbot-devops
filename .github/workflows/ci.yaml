@@ -4,7 +4,8 @@ name: CI/CD Pipeline - AI Chatbot Platform
 # GitHub Actions CI/CD Pipeline
 # ==============================================================================
 # Architecture & DevOps Guardrails:
-#   1. Quality Gate: Always runs automated pytest suite on any repository change.
+#   1. Quality Gate: Runs ruff lint, ruff format check, and the pytest suite with
+#      coverage on every repository change (AGENTS.md RULE 5.1 / RULE 5.2).
 #   2. Smart Path Filtering: Detects file changes using dorny/paths-filter@v4 (Node 24).
 #      Only triggers container builds when 'backend/**' files are modified.
 #   3. Zero Manual Secrets: Uses native GITHUB_TOKEN to authenticate with GHCR.
@@ -90,9 +91,17 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
-      - name: Execute pytest test suite
+      - name: Lint (ruff check)
+        run: ruff check .
+
+      - name: Format check (ruff format)
+        run: ruff format --check .
+
+      - name: Execute pytest with coverage
+        # Coverage is reported, not enforced yet. Raise the bar once the number
+        # is known and stable: add `--cov-fail-under=<value>`.
         run: |
-          pytest -v --tb=short
+          pytest -v --tb=short --cov=app --cov-report=term-missing
 
   # ----------------------------------------------------------------------------
   # Job 3: Build & Push Docker Image to GHCR (Selective Execution)

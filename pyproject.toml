@@ -1,3 +1,41 @@
+# ==============================================================================
+# Ruff: Unified Python Linting & Formatting
+# ==============================================================================
+# One tool replaces flake8 (lint), black (format), and isort (import order).
+# Guardrail: AGENTS.md RULE 5.1 — CI fails on any lint or format violation.
+# ==============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["backend"]
+
+[tool.ruff.lint]
+# E/W = pycodestyle   F = pyflakes (real bugs)   I = import sorting
+# UP  = pyupgrade (modern syntax)   B = flake8-bugbear (likely bugs)
+select = ["E", "F", "W", "I", "UP", "B"]
+# E501 stays off on purpose: the formatter already wraps code to the width above,
+# but it cannot wrap long comments or string literals, so E501 would only flag
+# text that `ruff format` is unable to fix.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+# conftest.py inserts backend/ into sys.path before importing the app package,
+# which is required by E402 (module level import not at top of file).
+"backend/tests/conftest.py" = ["E402"]
+
+# ==============================================================================
+# Pytest: Test Discovery & Async Execution
+# ==============================================================================
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+asyncio_mode = "auto"
+timeout = 60
+addopts = "--strict-markers"
+
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
@@ -17,4 +55,3 @@ reportExplicitAny = false
 reportUnusedCallResult = false
 reportMissingTypeStubs = false
 reportDeprecated = false
-

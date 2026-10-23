@@ -1,6 +1,6 @@
 # 🤖 AI Chatbot Microservice & MLOps Infrastructure Platform
 
-[![CI/CD Pipeline](https://github.com/HaniffKamal/ai-chatbot-devops/actions/workflows/deploy.yml/badge.svg)](https://github.com/HaniffKamal/ai-chatbot-devops/actions)
+[![CI/CD Pipeline](https://github.com/HaniffKamal/ai-chatbot-devops/actions/workflows/ci.yaml/badge.svg)](https://github.com/HaniffKamal/ai-chatbot-devops/actions)
 [![FastAPI](https://img.shields.com/badge/FastAPI-0.111+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com)
 [![Ollama](https://img.shields.io/badge/Ollama-NVIDIA_GPU-black?style=flat&logo=ollama&logoColor=white)](https://ollama.ai)
@@ -98,7 +98,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 | **Vector Store** | ChromaDB (Embedded) | In-process vector database for resume context search |
 | **Infrastructure** | Terraform | AWS Cloud VPC and EC2 provisioning |
 | **Configuration** | Ansible | Automated host configuration and Docker orchestration |
-| **CI/CD** | GitHub Actions | Automated linting, testing, image building, and SSH deployment |
+| **CI/CD** | GitHub Actions | Automated linting, formatting, testing, and image publishing |
 | **Metrics** | Prometheus & Grafana | Endpoint performance and system telemetry |
 
 ---
@@ -108,7 +108,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 ```
 ai-chatbot-devops/
 ├── .github/workflows/
-│   └── deploy.yml              # CI/CD pipeline (Lint -> Test -> Build -> Deploy)
+│   └── ci.yaml                 # CI/CD pipeline (Ruff lint/format -> pytest -> GHCR push)
 ├── backend/
 │   ├── app/
 │   │   ├── main.py             # FastAPI entrypoint, async client, /health, /api/chat
@@ -192,6 +192,21 @@ curl -s -X POST http://localhost/api/chat \
 
 Access the frontend portfolio directly at: **`http://localhost`**
 
+### 6. Run Linting, Formatting & Tests Locally
+
+```bash
+# One-time: install dev tooling (ruff, pytest, coverage)
+pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+cd backend
+ruff check .           # lint (add --fix to auto-correct)
+ruff format --check .  # verify formatting (drop --check to apply)
+pytest                 # run the test suite
+pytest --cov=app       # same, plus a coverage report (what CI prints)
+```
+
+These are the exact commands CI runs, so a clean local run means a green pipeline.
+
 ---
 
 ## 🚢 Production Deployment Workflow
@@ -214,11 +229,11 @@ ansible-playbook -i inventory.ini playbook.yml
 ```
 
 ### 3. Automated CI/CD (GitHub Actions)
-Every push to `main` executes:
-1. **Linting & Code Quality:** `flake8` and `black --check`.
-2. **Automated Testing:** `pytest` on FastAPI routes and RAG logic.
-3. **Container Image Build & Push:** Authenticates and pushes images to Docker Hub / GHCR.
-4. **Zero-Downtime Deployment:** SSH execution on the EC2 instance pulling fresh images and restarting services.
+Every push to `main` and every pull request targeting it executes:
+1. **Linting & Formatting:** `ruff check` and `ruff format --check`.
+2. **Automated Testing:** `pytest` on FastAPI routes and RAG logic, with coverage reporting.
+3. **Container Image Build & Push:** On `main`, builds and publishes `:latest` and `:<sha>` images to GHCR.
+4. **Deployment:** Handled by Ansible (`ansible/deploy.yaml`), which pulls the fresh image and restarts services.
 
 ---
 
