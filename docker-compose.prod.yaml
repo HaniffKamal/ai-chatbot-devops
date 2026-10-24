@@ -2,8 +2,9 @@
 # Docker Compose: Production Environment Overrides (Strict Rule 3.2)
 # ==============================================================================
 # Architecture Guardrails:
-#   1. Registry Image: Pulls pre-built multi-stage image from GHCR (no on-host build).
-#   2. Cloud API Primary: Uses Groq Cloud API (llama-3.1-8b-instant) for sub-second
+#   1. Registry Images: Pulls pre-built backend and frontend images from GHCR
+#      (no on-host build, so the server never needs the source tree).
+#   2. Cloud API Primary: Uses Groq Cloud API (openai/gpt-oss-20b) for sub-second
 #      low latency on CPU-only AWS EC2 instances, saving ~5GB RAM and 100% CPU.
 #   3. Lightweight Stack: Runs only FastAPI Backend and Nginx Frontend (no Ollama).
 #   4. Resource Safeguards: Sets memory & CPU limits to prevent server starvation.
@@ -16,6 +17,7 @@
 services:
   backend:
     image: ghcr.io/haniffkamal/chatbot:latest
+    pull_policy: always
     restart: unless-stopped
     deploy:
       resources:
@@ -24,6 +26,8 @@ services:
           memory: 2048M
 
   frontend:
+    image: ghcr.io/haniffkamal/chatbot-frontend:latest
+    pull_policy: always
     restart: unless-stopped
     deploy:
       resources:

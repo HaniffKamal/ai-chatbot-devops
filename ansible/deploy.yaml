@@ -46,14 +46,6 @@
         - docker-compose.yaml
         - docker-compose.prod.yaml
 
-    - name: Deploy frontend static assets and Nginx configuration
-      ansible.builtin.copy:
-        src: "../frontend"
-        dest: "{{ app_directory }}/"
-        owner: ubuntu
-        group: ubuntu
-        mode: "0755"
-
     - name: Render production .env from Jinja2 template (Strict 0600 permissions)
       ansible.builtin.template:
         src: "templates/.env.j2"

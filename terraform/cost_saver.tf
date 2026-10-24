@@ -5,7 +5,7 @@
 #   1. Hybrid Architecture: Demonstrates combining stateful EC2 compute with
 #      serverless AWS Lambda for event-driven cost governance.
 #   2. Zero Bill Shock: Automatically issues a graceful StopInstances call daily
-#      at 23:00 UTC (07:00 MYT) to ensure the server never runs overnight unmonitored.
+#      at 14:00 UTC (22:00 MYT) to ensure the server never runs overnight unmonitored.
 #   3. Principle of Least Privilege: Lambda IAM policy is strictly scoped to
 #      'ec2:DescribeInstances' and 'ec2:StopInstances' on the specific EC2 instance ARN.
 # ==============================================================================
@@ -118,7 +118,7 @@ resource "aws_lambda_function" "cost_saver" {
   }
 }
 
-# Amazon EventBridge Scheduled Rule (Cron: 23:00 UTC)
+# Amazon EventBridge Scheduled Rule (Cron: 14:00 UTC)
 resource "aws_cloudwatch_event_rule" "nightly_stop" {
   name                = "${var.project_name}-nightly-stop"
   description         = "Trigger Lambda to stop EC2 instance off-peak daily"
