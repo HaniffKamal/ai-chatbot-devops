@@ -16,8 +16,16 @@ terraform {
       source  = "hashicorp/local"
       version = "~> 2.5"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"
+    }
   }
 }
+
+# The Cloudflare provider authenticates with CLOUDFLARE_API_TOKEN from the
+# environment. Never commit the token or pass it as a variable.
+provider "cloudflare" {}
 
 provider "aws" {
   region = var.aws_region

@@ -5,38 +5,23 @@
 #   1. Zero Inbound Administrative Ports: Port 22 (SSH) is 100% CLOSED.
 #      Administrative terminal access is managed exclusively via AWS Systems Manager
 #      (SSM) Session Manager, eliminating brute-force attacks and SSH key theft.
-#   2. Web Traffic Only: Ingress is restricted to Port 80 (HTTP) and Port 443 (HTTPS).
-#   3. Internal Port Cloaking: Ports 8000 (FastAPI), 11434 (Ollama), 9090 (Prometheus),
-#      and 3000 (Grafana) are NEVER exposed to the public internet; they communicate
-#      strictly across the private internal Docker bridge network.
-#   4. Outbound Access: Egress is open to allow the SSM Agent to establish outbound
-#      HTTPS tunnels, pull Docker images from Docker Hub, and reach the Groq API.
+#   2. Zero Ingress: Cloudflare Tunnel (cloudflared) dials outbound to the edge,
+#      so there is no public listener and no inbound rule to maintain.
+#   3. Internal Port Cloaking: Ports 8000 (FastAPI), 8080 (Nginx), and 11434
+#      (Ollama, local profile) only exist on the private Docker bridge network.
+#   4. Outbound Access: Egress is open to allow the tunnel, the SSM Agent, image
+#      pulls from GHCR, and calls to the Groq API.
 # ==============================================================================
 
 resource "aws_security_group" "web" {
   name        = "${var.project_name}-web-sg"
-  description = "Security group for AI Chatbot reverse proxy and web gateway (Zero SSH ports)"
+  description = "Cloudflare Tunnel origin - zero ingress rules"
   vpc_id      = aws_vpc.main.id
 
-  # Ingress: HTTP (Port 80)
-  ingress {
-    description = "HTTP web traffic from Cloudflare / Internet"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # Ingress: NONE. Cloudflare Tunnel (cloudflared) dials outbound to the edge,
+  # so the instance has no listening public service and no inbound rules at all.
 
-  # Ingress: HTTPS (Port 443)
-  ingress {
-    description = "HTTPS web traffic from Cloudflare / Internet"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Egress: All outbound traffic (Required for SSM, Docker Hub, Groq API, and OS updates)
+  # Egress: All outbound traffic (Required for the tunnel, SSM, GHCR, Groq API, and OS updates)
   egress {
     description = "Allow all outbound traffic"
     from_port   = 0

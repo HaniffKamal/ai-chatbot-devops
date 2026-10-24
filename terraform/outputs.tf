@@ -8,8 +8,23 @@ output "ec2_instance_id" {
 }
 
 output "ec2_public_ip" {
-  description = "The public IPv4 address of the EC2 instance (used for Cloudflare DNS mapping)"
+  description = "The EC2 public IPv4 (egress only; no DNS record or inbound rule depends on it)"
   value       = aws_instance.chatbot.public_ip
+}
+
+output "chatbot_url" {
+  description = "Public HTTPS endpoint served through the Cloudflare Tunnel"
+  value       = "https://${var.chatbot_subdomain}.${var.domain_name}"
+}
+
+output "tunnel_id" {
+  description = "Cloudflare Tunnel UUID (shown in Zero Trust → Networks → Tunnels)"
+  value       = cloudflare_zero_trust_tunnel_cloudflared.chatbot.id
+}
+
+output "tunnel_token_ssm_parameter" {
+  description = "SSM Parameter Store name holding the tunnel token (SecureString)"
+  value       = aws_ssm_parameter.cloudflare_tunnel_token.name
 }
 
 output "vpc_id" {
@@ -23,7 +38,7 @@ output "public_subnet_id" {
 }
 
 output "security_group_id" {
-  description = "The ID of the web security group (Zero SSH ports)"
+  description = "The ID of the security group (zero inbound rules)"
   value       = aws_security_group.web.id
 }
 

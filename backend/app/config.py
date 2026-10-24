@@ -85,7 +85,9 @@ class Settings(BaseSettings):
     # --------------------------------------------------------------------------
     # Comma-separated list of allowed origins. Permits both local browser testing
     # and cross-origin requests from the developer's external portfolio website.
-    ALLOWED_ORIGINS: str = "http://localhost,http://localhost:80,https://haniffkamal.my"
+    ALLOWED_ORIGINS: str = (
+        "http://localhost,http://localhost:80,https://haniffkamal.my,https://chatbot.haniffkamal.my"
+    )
 
     # --------------------------------------------------------------------------
     # Dynamic Computed Properties (@property)
