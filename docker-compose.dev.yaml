@@ -31,3 +31,14 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  # Bind mounts are a development-only convenience. Production serves the
+  # assets baked into the image, so the image is the single source of truth.
+  frontend:
+    volumes:
+      - ./frontend/index.html:/usr/share/nginx/html/index.html:ro
+      - ./frontend/style.css:/usr/share/nginx/html/style.css:ro
+      - ./frontend/script.js:/usr/share/nginx/html/script.js:ro
+      - ./frontend/marked.min.js:/usr/share/nginx/html/marked.min.js:ro
+      - ./frontend/purify.min.js:/usr/share/nginx/html/purify.min.js:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro

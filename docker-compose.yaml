@@ -71,18 +71,15 @@ services:
   # 3. Web Server & Reverse Proxy: Nginx
   # ----------------------------------------------------------------------------
   frontend:
-    image: nginx:alpine              # Lightweight Alpine Linux base image (~20MB)
+    build:
+      context: ./frontend            # Unprivileged Nginx image with assets baked in
+      dockerfile: Dockerfile
     container_name: chatbot-frontend
     restart: unless-stopped
 
     ports:
-      - "80:80"                      # Standard HTTP entrypoint for client browser
-
-    volumes:
-      # Mount Nginx reverse proxy configuration (read-only)
-      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # Mount portfolio static assets (HTML, CSS, JS) (read-only)
-      - ./frontend:/usr/share/nginx/html:ro
+      # Host 80 -> container 8080 (unprivileged Nginx cannot bind port 80)
+      - "80:8080"
 
     # Ensure backend starts before Nginx forwards traffic
     depends_on:

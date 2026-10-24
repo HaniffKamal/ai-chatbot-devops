@@ -7,10 +7,12 @@ name: CI/CD Pipeline - AI Chatbot Platform
 #   1. Quality Gate: Runs ruff lint, ruff format check, and the pytest suite with
 #      coverage on every repository change (AGENTS.md RULE 5.1 / RULE 5.2).
 #   2. Smart Path Filtering: Detects file changes using dorny/paths-filter@v4 (Node 24).
-#      Only triggers container builds when 'backend/**' files are modified.
+#      Only the affected container image is built and published.
 #   3. Zero Manual Secrets: Uses native GITHUB_TOKEN to authenticate with GHCR.
-#   4. Dual Tagging: Tags both :latest and :<commit-sha> for release traceability.
-#   5. High-Speed Layer Caching: Utilizes GitHub Actions cache (type=gha) to accelerate builds.
+#   4. Immutable Releases: Every build is tagged :latest and :<commit-sha>, so a
+#      rollback is a matter of pinning the previous SHA in Compose.
+#   5. High-Speed Layer Caching: Utilizes GitHub Actions cache (type=gha) with
+#      per-image scopes to accelerate builds.
 # ==============================================================================
 
 on:
@@ -45,17 +47,21 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Check for backend modifications
+      - name: Check for changed components
         uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
             backend:
               - 'backend/**'
+              - '.github/workflows/ci.yaml'
+            frontend:
+              - 'frontend/**'
               - '.github/workflows/ci.yaml'
 
   # ----------------------------------------------------------------------------
@@ -101,14 +107,14 @@ jobs:
           pytest -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=75
 
   # ----------------------------------------------------------------------------
-  # Job 3: Build & Push Docker Image to GHCR (Selective Execution)
+  # Job 3: Build & Push Container Images to GHCR (Selective Execution)
   # ----------------------------------------------------------------------------
   build-and-push:
-    name: Build & Push Image to GHCR
+    name: Build & Push Images to GHCR
     needs: [test, changes]
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.backend == 'true') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       github.event_name == 'workflow_dispatch'
 
     steps:
@@ -125,13 +131,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push backend image
+        if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: ghcr.io/haniffkamal/chatbot:latest
+          tags: |
+            ghcr.io/haniffkamal/chatbot:latest
+            ghcr.io/haniffkamal/chatbot:${{ github.sha }}
           provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build and push frontend image
+        if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/haniffkamal/chatbot-frontend:latest
+            ghcr.io/haniffkamal/chatbot-frontend:${{ github.sha }}
+          provenance: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

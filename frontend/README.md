@@ -6,9 +6,11 @@ This directory contains the client-facing static portfolio assets and the Nginx 
 
 ## 1. Overview & Purpose
 
-Nginx serves as the single entrypoint on **Port 80**, performing two distinct roles:
+Nginx serves as the single entrypoint on **host Port 80** (container port 8080 in the unprivileged image), performing two distinct roles:
 1. **Static Web Server:** Serves HTML, CSS, JavaScript, and asset files with minimal memory footprint (~15 MB RAM).
 2. **Reverse Proxy:** Safely forwards API requests (`/api/*`) and health checks (`/health`) to the private FastAPI backend container on port 8000.
+
+**Packaging:** the assets and `nginx.conf` are baked into the `chatbot-frontend` image (`frontend/Dockerfile`). Only `docker-compose.dev.yaml` bind-mounts them, for live editing; production runs the immutable image.
 
 ---
 
