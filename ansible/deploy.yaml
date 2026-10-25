@@ -16,7 +16,7 @@
     app_directory: "/opt/chatbot"
     aws_region: "ap-southeast-1"
     # Must match var.environment in terraform/variables.tf
-    tunnel_token_ssm_parameter: "/chatbot/dev/cloudflare_tunnel_token"
+    tunnel_token_ssm_parameter: "/chatbot/prod/cloudflare_tunnel_token"
 
   tasks:
     # --------------------------------------------------------------------------

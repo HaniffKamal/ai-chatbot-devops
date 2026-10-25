@@ -18,7 +18,7 @@ output "chatbot_url" {
 }
 
 output "tunnel_id" {
-  description = "Cloudflare Tunnel UUID (shown in Zero Trust → Networks → Tunnels)"
+  description = "Cloudflare Tunnel UUID (shown in Networking → Tunnels)"
   value       = cloudflare_zero_trust_tunnel_cloudflared.chatbot.id
 }
 
