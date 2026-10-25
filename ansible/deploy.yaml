@@ -26,6 +26,7 @@
       ansible.builtin.set_fact:
         groq_api_key: "{{ lookup('ansible.builtin.file', '../.env') | regex_search('GROQ_API_KEY=([^\r\n]+)', '\\1') | first }}"
       run_once: true
+      no_log: true
 
     - name: Validate that GROQ_API_KEY is present
       ansible.builtin.assert:
@@ -33,6 +34,7 @@
           - groq_api_key is defined
           - groq_api_key | length > 10
         fail_msg: "GROQ_API_KEY is missing from your local .env file! Please check /home/invader/chatbot/.env"
+      no_log: true
 
     - name: Read Cloudflare Tunnel token from SSM Parameter Store
       ansible.builtin.set_fact:

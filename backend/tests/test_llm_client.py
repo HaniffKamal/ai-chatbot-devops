@@ -74,6 +74,7 @@ def _make_engine(
         LLM_PROVIDER="groq",
         GROQ_API_KEY=api_key,
         OLLAMA_HOST=ollama_host,
+        ALLOWED_ORIGINS="https://chatbot.haniffkamal.my",
     )
     return DualEngineLLM(app_settings=app_settings)
 
