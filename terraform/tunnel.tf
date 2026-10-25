@@ -28,8 +28,8 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "chatbot" {
   config = {
     ingress = [
       {
-        hostname       = "${var.chatbot_subdomain}.${var.domain_name}"
-        service        = "http://frontend:8080"
+        hostname = "${var.chatbot_subdomain}.${var.domain_name}"
+        service  = "http://frontend:8080"
         origin_request = {
           http_host_header = "${var.chatbot_subdomain}.${var.domain_name}"
         }

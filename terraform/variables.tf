@@ -17,7 +17,7 @@ variable "project_name" {
 variable "environment" {
   description = "Deployment lifecycle environment (dev, staging, prod)"
   type        = string
-  default     = "dev"
+  default     = "prod"
 }
 
 variable "vpc_cidr" {
@@ -73,7 +73,7 @@ variable "chatbot_subdomain" {
 }
 
 variable "cloudflare_account_id" {
-  description = "Cloudflare account ID (Zero Trust → Tunnels lives at account scope)"
+  description = "Cloudflare account ID (Cloudflare Tunnel is account-scoped)"
   type        = string
 }
 

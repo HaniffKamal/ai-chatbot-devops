@@ -236,9 +236,7 @@ Create a **scoped** API token in the Cloudflare dashboard → My Profile → API
 | Scope | Permission |
 |---|---|
 | Account → Cloudflare Tunnel | Edit |
-| Account → Cloudflare One Connector: cloudflared | Edit |
 | Zone → DNS | Edit |
-| Zone → Zone | Read |
 
 Then export it (never commit it):
 
@@ -247,7 +245,7 @@ export CLOUDFLARE_API_TOKEN="your-scoped-token"
 ```
 
 Find the two IDs and put them in `terraform.tfvars` (see `terraform.tfvars.example`):
-- **Account ID** — Zero Trust → Settings, or the dashboard URL.
+- **Account ID** — the `dash.cloudflare.com/<account-id>/...` URL.
 - **Zone ID** — the `haniffkamal.my` zone Overview page, right-hand sidebar.
 
 ### 1. Infrastructure Provisioning (Terraform)
@@ -270,9 +268,11 @@ ansible-playbook -i inventory.ini playbook.yaml   # first-time host setup (Docke
 ansible-playbook -i inventory.ini deploy.yaml     # render env files, pull images, restart
 ```
 
-`deploy.yaml` reads the tunnel token from SSM Parameter Store, so the AWS CLI on the
-controller must be authenticated. It renders both `.env` and `cloudflared.env` (0600),
-runs `docker compose pull`, and gates on `http://127.0.0.1:8080/health`.
+`deploy.yaml` reads the token from SSM Parameter Store at
+`/chatbot/prod/cloudflare_tunnel_token` (it must match `var.environment` in
+`terraform/variables.tf`), so the AWS CLI on the controller must be authenticated.
+It renders both `.env` and `cloudflared.env` (0600), runs `docker compose pull`,
+and gates on `http://127.0.0.1:8080/health`.
 
 ```bash
 curl -s https://chatbot.haniffkamal.my/health

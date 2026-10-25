@@ -1,0 +1,22 @@
+# ==============================================================================
+# Terraform Variables Example: Custom Overrides
+# ==============================================================================
+# Copy this file to 'terraform.tfvars' to customize local values:
+#   cp terraform.tfvars.example terraform.tfvars
+# ==============================================================================
+
+aws_region          = "ap-southeast-1"
+project_name        = "ai-chatbot-devops"
+environment         = "prod"
+vpc_cidr            = "10.0.0.0/16"
+public_subnet_cidr  = "10.0.1.0/24"
+instance_type       = "m7i-flex.large"
+root_volume_size    = 30
+auto_stop_cron      = "cron(0 14 * * ? *)"
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# Cloudflare Tunnel
+domain_name           = "haniffkamal.my"
+chatbot_subdomain     = "chatbot"
+cloudflare_account_id = "your-account-id"
+cloudflare_zone_id    = "your-zone-id"
