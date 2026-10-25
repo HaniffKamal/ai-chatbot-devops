@@ -14,6 +14,9 @@
 
   vars:
     app_directory: "/opt/chatbot"
+    aws_region: "ap-southeast-1"
+    # Must match var.environment in terraform/variables.tf
+    tunnel_token_ssm_parameter: "/chatbot/dev/cloudflare_tunnel_token"
 
   tasks:
     # --------------------------------------------------------------------------
@@ -23,6 +26,7 @@
       ansible.builtin.set_fact:
         groq_api_key: "{{ lookup('ansible.builtin.file', '../.env') | regex_search('GROQ_API_KEY=([^\r\n]+)', '\\1') | first }}"
       run_once: true
+      no_log: true
 
     - name: Validate that GROQ_API_KEY is present
       ansible.builtin.assert:
@@ -30,6 +34,21 @@
           - groq_api_key is defined
           - groq_api_key | length > 10
         fail_msg: "GROQ_API_KEY is missing from your local .env file! Please check /home/invader/chatbot/.env"
+      no_log: true
+
+    - name: Read Cloudflare Tunnel token from SSM Parameter Store
+      ansible.builtin.set_fact:
+        cloudflare_tunnel_token: "{{ lookup('pipe', 'aws ssm get-parameter --name ' ~ tunnel_token_ssm_parameter ~ ' --with-decryption --query Parameter.Value --output text --region ' ~ aws_region) }}"
+      run_once: true
+      no_log: true
+
+    - name: Validate that the tunnel token is present
+      ansible.builtin.assert:
+        that:
+          - cloudflare_tunnel_token is defined
+          - cloudflare_tunnel_token | length > 20
+        fail_msg: "Tunnel token missing from SSM at {{ tunnel_token_ssm_parameter }}"
+      no_log: true
 
 
     # --------------------------------------------------------------------------
@@ -53,6 +72,16 @@
         owner: ubuntu
         group: ubuntu
         mode: "0600"
+      no_log: true
+
+    - name: Render Cloudflare Tunnel connector env file (Strict 0600 permissions)
+      ansible.builtin.template:
+        src: "templates/cloudflared.env.j2"
+        dest: "{{ app_directory }}/cloudflared.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+      no_log: true
 
     # --------------------------------------------------------------------------
     # 3. Container Orchestration & Rollout (Native Docker Compose v2)
@@ -72,7 +101,7 @@
     # --------------------------------------------------------------------------
     - name: Wait for Nginx and FastAPI services to report healthy
       ansible.builtin.uri:
-        url: "http://localhost/health"
+        url: "http://127.0.0.1:8080/health"
         method: GET
         status_code: 200
         return_content: true

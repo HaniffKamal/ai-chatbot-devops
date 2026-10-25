@@ -29,8 +29,34 @@ services:
     image: ghcr.io/haniffkamal/chatbot-frontend:latest
     pull_policy: always
     restart: unless-stopped
+    # Loopback only: used by the Ansible /health gate. Public traffic arrives
+    # through the Cloudflare Tunnel, and the Security Group has no ingress.
+    ports:
+      - "127.0.0.1:8080:8080"
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: 512M
+
+  # Outbound-only connector to the Cloudflare edge (no inbound ports).
+  # cloudflared.env is rendered by Ansible from an SSM SecureString.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.3
+    container_name: chatbot-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - cloudflared.env
+    depends_on:
+      - frontend
+    networks:
+      - chatbot-net
+    # No HEALTHCHECK: the official image is distroless (no shell/curl).
+    # Connector health is reported by Cloudflare Zero Trust and the
+    # --metrics endpoint; restart policy handles crashes.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M

@@ -33,7 +33,7 @@ variable "public_subnet_cidr" {
 }
 
 variable "instance_type" {
-  description = "EC2 compute instance type tailored for Ollama LLM and RAG inference"
+  description = "EC2 compute instance type sized for RAG and optional local LLM inference"
   type        = string
   default     = "m7i-flex.large" # 2 vCPU, 8 GiB RAM
 }
@@ -54,4 +54,30 @@ variable "ssh_public_key_path" {
   description = "Path to the local SSH public key for SSM-tunneled authentication (Rule 1.2)"
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
+}
+
+# ------------------------------------------------------------------------------
+# Cloudflare Tunnel (Zero Inbound Ports)
+# ------------------------------------------------------------------------------
+
+variable "domain_name" {
+  description = "Cloudflare-managed apex domain"
+  type        = string
+  default     = "haniffkamal.my"
+}
+
+variable "chatbot_subdomain" {
+  description = "Subdomain routed through the Cloudflare Tunnel to the frontend"
+  type        = string
+  default     = "chatbot"
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID (Zero Trust → Tunnels lives at account scope)"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for domain_name (used for the tunnel CNAME)"
+  type        = string
 }

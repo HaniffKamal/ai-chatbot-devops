@@ -26,10 +26,11 @@ This repository operates as an **independent, embeddable AI microservice**. It i
                                         ▼
                     ┌──────────────────────────────────────────────┐
                     │             CLOUDFLARE EDGE                  │
-                    │   • DNS & SSL Routing (api.haniffkamal.my)   │
-                    │   • Origin Shield & DDoS Mitigation          │
+                    │  • DNS: chatbot.haniffkamal.my (CNAME)       │
+                    │  • Tunnel: outbound-only, zero open ports    │
+                    │  • DDoS mitigation & edge TLS                │
                     └───────────────────┬──────────────────────────┘
-                                        │ HTTP (Port 80)
+                                        │ QUIC/HTTP2 (EC2 dials out)
                                         ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 AWS CUSTOM VPC (ISOLATED)                              │
@@ -42,7 +43,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 │  │  │  │                                                                      │  │  │  │
 │  │  │  │   ┌──────────────┐     ┌──────────────┐     ┌─────────────────────┐  │  │  │  │
 │  │  │  │   │ Nginx Proxy  │────▶│ FastAPI API  │────▶│   Ollama Engine     │  │  │  │  │
-│  │  │  │   │  (Port 80)   │     │ (Port 8000)  │     │   (Port 11434)      │  │  │  │  │
+│  │  │  │   │ (Port 8080)  │     │ (Port 8000)  │     │   (Port 11434)      │  │  │  │  │
 │  │  │  │   │ Web Client + │     │ Async Pool + │     │   Llama 3.1 / 3.2   │  │  │  │  │
 │  │  │  │   │ Reverse Prox │     │ Embedded RAG │     │ (Local GPU / CPU)   │  │  │  │  │
 │  │  │  │   └──────────────┘     └──────┬───────┘     └──────────┬──────────┘  │  │  │  │
@@ -60,7 +61,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-> **Production note:** the EC2 stack runs **Nginx + FastAPI only**. Ollama is a local-development profile; production uses the Groq API (`openai/gpt-oss-20b`) because the host is CPU-only with 8 GiB RAM. Prometheus/Grafana are planned, not deployed.
+> **Production note:** the EC2 stack runs **cloudflared + Nginx + FastAPI only**. Ingress is a Cloudflare Tunnel, so the Security Group has no inbound rules. Ollama is a local-development profile; production uses the Groq API (`openai/gpt-oss-20b`) because the host is CPU-only with 8 GiB RAM. Prometheus/Grafana are planned, not deployed.
 
 ---
 
@@ -73,9 +74,9 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 
 ### 2. 🛡️ Production Security & Guardrails
 * **Non-Root Execution:** The backend runs as `appuser:appgroup` (UID/GID `10001`); the frontend image runs as the unprivileged Nginx user (UID 101).
-* **Zero Administrative Ports:** Port 22 is closed in the Security Group; shell access is IAM-gated through SSM Session Manager.
-* **Origin Cloaking:** Cloudflare proxy masks the origin EC2 IP address to prevent direct DDoS attacks.
-* **Zero Secret Leakage:** Strict separation of configuration and secrets via environment variables and masked GitHub Actions secrets.
+* **Zero Inbound Ports:** The Security Group has no ingress rules at all. Public traffic arrives through a Cloudflare Tunnel (`cloudflared`, outbound-only) and shell access is IAM-gated through SSM Session Manager.
+* **Origin Cloaking:** The tunnel publishes `chatbot.haniffkamal.my` without exposing the EC2 IP or any listening port.
+* **Zero Secret Leakage:** Secrets live in `.env` (0600, rendered by Ansible) or SSM `SecureString`; the tunnel token never enters Git or an image.
 
 ### 3. ⚙️ Idempotent Infrastructure as Code (IaC)
 * **Terraform:** Declaratively defines the complete AWS topology (VPC, Subnet, Internet Gateway, Route Tables, Security Groups, and EC2 Compute).
@@ -100,6 +101,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 | **Backend API** | FastAPI (`python:3.10-slim`) | Async HTTP connection pooling, RAG orchestration |
 | **LLM Engine (local)** | Ollama (`llama3.2:1b`) | GPU-accelerated private inference during local development |
 | **LLM Engine (prod)** | Groq Cloud LPU (`openai/gpt-oss-20b`) | CPU-free inference on EC2; no Ollama container |
+| **Edge Ingress** | Cloudflare Tunnel (`cloudflared` 2026.10.3) | Outbound-only connector; origin exposes no inbound ports |
 | **Vector Store** | ChromaDB (Embedded) | In-process vector database for resume context search |
 | **Infrastructure** | Terraform | AWS Cloud VPC and EC2 provisioning |
 | **Configuration** | Ansible | Automated host configuration and Docker orchestration |
@@ -138,13 +140,14 @@ ai-chatbot-devops/
 │   ├── provider.tf             # AWS provider and version constraints
 │   ├── backend.tf              # S3 remote state (encrypted, versioned)
 │   ├── vpc.tf                  # VPC, public subnet, IGW, route table
-│   ├── security_groups.tf      # Ports 80/443 only; zero admin ports
+│   ├── security_groups.tf      # Zero ingress rules; tunnel is outbound-only
 │   ├── ec2.tf                  # m7i-flex.large, gp3 root volume, SSM profile
 │   ├── iam.tf                  # SSM instance role and profile
 │   ├── cost_saver.tf           # EventBridge + Lambda auto-stop
 │   ├── inventory.tf            # Renders ansible/inventory.ini
-│   ├── variables.tf            # Configurable inputs
-│   ├── outputs.tf              # EC2 ID/IP and SSM connect command
+│   ├── variables.tf            # Configurable inputs (AWS + Cloudflare IDs)
+│   ├── outputs.tf              # EC2 ID, chatbot URL, tunnel ID, SSM parameter
+│   ├── tunnel.tf               # Cloudflare Tunnel, ingress, CNAME, SSM token
 │   └── terraform.tfvars.example
 ├── ansible/
 │   ├── playbook.yaml           # System updates, Docker install, host directories
@@ -158,7 +161,7 @@ ai-chatbot-devops/
 │   └── test_rate_limit.sh      # Verifies Nginx returns 429 past the burst
 ├── docker-compose.yaml         # Core service definitions (Frontend, Backend, Ollama profile)
 ├── docker-compose.dev.yaml     # Local dev overrides (NVIDIA GPU runtime)
-├── docker-compose.prod.yaml    # Production overrides (Groq-only, restart policies, limits)
+├── docker-compose.prod.yaml    # Production: Groq-only, cloudflared, restart, limits
 └── README.md                   # Project documentation
 ```
 
@@ -226,6 +229,27 @@ These are the exact commands CI runs, so a clean local run means a green pipelin
 
 ## 🚢 Production Deployment Workflow
 
+### 0. Cloudflare API Token (Terraform)
+
+Create a **scoped** API token in the Cloudflare dashboard → My Profile → API Tokens → Create Token → Custom token:
+
+| Scope | Permission |
+|---|---|
+| Account → Cloudflare Tunnel | Edit |
+| Account → Cloudflare One Connector: cloudflared | Edit |
+| Zone → DNS | Edit |
+| Zone → Zone | Read |
+
+Then export it (never commit it):
+
+```bash
+export CLOUDFLARE_API_TOKEN="your-scoped-token"
+```
+
+Find the two IDs and put them in `terraform.tfvars` (see `terraform.tfvars.example`):
+- **Account ID** — Zero Trust → Settings, or the dashboard URL.
+- **Zone ID** — the `haniffkamal.my` zone Overview page, right-hand sidebar.
+
 ### 1. Infrastructure Provisioning (Terraform)
 ```bash
 cd terraform
@@ -233,16 +257,29 @@ terraform init
 terraform plan -out=tfplan
 terraform apply tfplan
 
-# ansible/inventory.ini is rendered automatically by terraform/inventory.tf
-# on apply (the host is targeted by instance ID over SSM) — no manual step.
+# Terraform creates the tunnel, its ingress config, the proxied CNAME for
+# chatbot.haniffkamal.my, and the SSM SecureString holding the tunnel token.
+# ansible/inventory.ini is rendered automatically on apply — no manual step.
+terraform output chatbot_url
 ```
 
 ### 2. Server Configuration & Deployment (Ansible)
 ```bash
 cd ../ansible
 ansible-playbook -i inventory.ini playbook.yaml   # first-time host setup (Docker, dirs)
-ansible-playbook -i inventory.ini deploy.yaml     # release: render .env, pull images, restart
+ansible-playbook -i inventory.ini deploy.yaml     # render env files, pull images, restart
 ```
+
+`deploy.yaml` reads the tunnel token from SSM Parameter Store, so the AWS CLI on the
+controller must be authenticated. It renders both `.env` and `cloudflared.env` (0600),
+runs `docker compose pull`, and gates on `http://127.0.0.1:8080/health`.
+
+```bash
+curl -s https://chatbot.haniffkamal.my/health
+```
+
+If an old `api.haniffkamal.my` A record still exists in Cloudflare, delete it — the
+tunnel's CNAME is the only record that should point at the chatbot.
 
 ### 3. Automated CI/CD (GitHub Actions)
 Every push to `main` and every pull request targeting it executes:

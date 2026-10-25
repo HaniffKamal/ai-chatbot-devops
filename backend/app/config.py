@@ -13,7 +13,10 @@
 #        c. Hardcoded fallback defaults defined below
 # ==============================================================================
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+LOCAL_DEV_ORIGINS = "http://localhost,http://localhost:80"
 
 
 class Settings(BaseSettings):
@@ -83,9 +86,24 @@ class Settings(BaseSettings):
     # --------------------------------------------------------------------------
     # Networking & Cross-Origin Resource Sharing (CORS)
     # --------------------------------------------------------------------------
-    # Comma-separated list of allowed origins. Permits both local browser testing
-    # and cross-origin requests from the developer's external portfolio website.
-    ALLOWED_ORIGINS: str = "http://localhost,http://localhost:80,https://haniffkamal.my"
+    # Comma-separated list of allowed origins. Local-development fallback only;
+    # production origins are supplied by the environment (.env rendered by Ansible).
+    ALLOWED_ORIGINS: str = LOCAL_DEV_ORIGINS
+
+    @model_validator(mode="after")
+    def validate_production_origins(self) -> "Settings":
+        """
+        Fail fast if production boots with the local development fallback, rather
+        than silently serving a broken CORS policy.
+        """
+        if self.ENVIRONMENT == "production" and not any(
+            origin.startswith("https://") for origin in self.allowed_origins_list
+        ):
+            raise ValueError(
+                "ALLOWED_ORIGINS must include at least one https origin when "
+                "ENVIRONMENT=production (rendered by Ansible from .env.j2)."
+            )
+        return self
 
     # --------------------------------------------------------------------------
     # Dynamic Computed Properties (@property)

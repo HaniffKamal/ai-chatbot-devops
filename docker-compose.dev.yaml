@@ -14,6 +14,8 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       - ENVIRONMENT=development
+    ports:
+      - "8000:8000"
     volumes:
       # Mount application source code for live development
       - ./backend/app:/app/app:ro
@@ -35,6 +37,8 @@ services:
   # Bind mounts are a development-only convenience. Production serves the
   # assets baked into the image, so the image is the single source of truth.
   frontend:
+    ports:
+      - "80:8080"
     volumes:
       - ./frontend/index.html:/usr/share/nginx/html/index.html:ro
       - ./frontend/style.css:/usr/share/nginx/html/style.css:ro

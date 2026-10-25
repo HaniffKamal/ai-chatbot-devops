@@ -44,8 +44,10 @@ services:
     container_name: chatbot-backend
     restart: unless-stopped
 
-    ports:
-      - "8000:8000"                  # Expose FastAPI API on port 8000
+    # Ports are published only by the dev override. In production the backend
+    # is reachable solely over the internal Docker network.
+    expose:
+      - "8000"
 
     # Load environment variables from .env file (if present)
     env_file:
@@ -77,9 +79,10 @@ services:
     container_name: chatbot-frontend
     restart: unless-stopped
 
-    ports:
-      # Host 80 -> container 8080 (unprivileged Nginx cannot bind port 80)
-      - "80:8080"
+    # Ports are published only by the dev/prod overrides. Production binds
+    # loopback for health checks and is otherwise reached via cloudflared.
+    expose:
+      - "8080"
 
     # Ensure backend starts before Nginx forwards traffic
     depends_on:

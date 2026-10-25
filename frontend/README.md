@@ -6,7 +6,7 @@ This directory contains the client-facing static portfolio assets and the Nginx 
 
 ## 1. Overview & Purpose
 
-Nginx serves as the single entrypoint on **host Port 80** (container port 8080 in the unprivileged image), performing two distinct roles:
+Nginx serves the app on **container port 8080** (host `80` in local dev; reached through the Cloudflare Tunnel in production), performing two distinct roles:
 1. **Static Web Server:** Serves HTML, CSS, JavaScript, and asset files with minimal memory footprint (~15 MB RAM).
 2. **Reverse Proxy:** Safely forwards API requests (`/api/*`) and health checks (`/health`) to the private FastAPI backend container on port 8000.
 
