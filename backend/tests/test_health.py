@@ -10,6 +10,8 @@
 from fastapi import status
 from fastapi.testclient import TestClient
 
+from app import main as main_module
+
 
 def test_health_returns_200_and_status_ok(client: TestClient):
     """Verify that GET /health responds with 200 OK and status='ok'."""
@@ -44,3 +46,14 @@ def test_health_reports_positive_rag_chunks(client: TestClient):
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["rag_indexed_chunks"] > 0, "Expected at least 1 indexed chunk in knowledge base"
+
+
+def test_health_reports_degraded_when_rag_index_is_empty(client: TestClient, monkeypatch):
+    """Verify that a missing RAG index is surfaced as degraded, not ok."""
+    monkeypatch.setattr(main_module, "rag_pipeline", None)
+
+    response = client.get("/health")
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["rag_indexed_chunks"] == 0

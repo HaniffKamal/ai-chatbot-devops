@@ -67,8 +67,11 @@ COPY --from=builder /install /install
 COPY ./app /app/app
 COPY ./data /app/data
 
-# Ensure chroma_db directory exists and set ownership of /app to appuser
-RUN mkdir -p /app/chroma_db && chown -R appuser:appgroup /app
+# Create both volume mountpoints and hand them to appuser. Docker seeds a new
+# named volume with this directory's ownership; without it the ONNX cache volume
+# is root-owned, the model download fails, and RAG is silently disabled.
+RUN mkdir -p /app/chroma_db /home/appuser/.cache && \
+    chown -R appuser:appgroup /app /home/appuser/.cache
 
 # Switch to the non-root user
 USER appuser
