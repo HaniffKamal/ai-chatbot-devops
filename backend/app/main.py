@@ -152,8 +152,10 @@ async def health_check():
         except Exception:  # noqa: BLE001
             rag_chunks = 0
 
+    # An empty index means the ONNX model cache or ingestion failed. Report
+    # degraded so the deploy gate and dashboards catch a silent RAG outage.
     return HealthResponse(
-        status="ok",
+        status="ok" if rag_chunks > 0 else "degraded",
         active_provider=settings.LLM_PROVIDER,
         ollama_connected=ollama_ok,
         groq_configured=settings.is_groq_enabled,

@@ -106,9 +106,11 @@
         status_code: 200
         return_content: true
       register: health_check
-      retries: 12
+      # A fresh volume downloads the ONNX model before indexing, so allow more
+      # attempts than a static probe. Degraded health (chunks=0) is a failure.
+      retries: 36
       delay: 5
-      until: health_check.status == 200
+      until: health_check.status == 200 and (health_check.json.rag_indexed_chunks | default(0)) > 0
 
     - name: Display live service verification details
       ansible.builtin.debug:

@@ -68,12 +68,12 @@ Thumbs.db
 *.swp
 *.swo
 
-# Project Planning & Agent Customizations
-blueprint.md
+# Personal planning, agent context, skills, and notes (local only)
+docs/
 blueprint*.md
+Tips_and_Knowledge.md
+AGENTS.md
 .agents/
 .agent/
-AGENTS.md
-Tips_and_Knowledge.md
-CONTEXT_HANDOVER.md
 .commandcode/
+.opencode/
