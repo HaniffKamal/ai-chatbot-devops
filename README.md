@@ -12,7 +12,7 @@ An enterprise-grade, containerized AI Chatbot Microservice featuring **Retrieval
 
 ### Architectural Model: Decoupled Microservice
 This repository operates as an **independent, embeddable AI microservice**. It is designed to cleanly integrate with external frontends—specifically powering the interactive chatbot assistant on the master developer portfolio ([`haniffkamal.my`](https://haniffkamal.my)), which is hosted separately 24/7 on Cloudflare Pages.
-
+s
 ---
 
 ## 🏛️ System Architecture
