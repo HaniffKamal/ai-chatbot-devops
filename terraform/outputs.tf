@@ -17,16 +17,6 @@ output "chatbot_url" {
   value       = "https://${var.chatbot_subdomain}.${var.domain_name}"
 }
 
-output "tunnel_id" {
-  description = "Cloudflare Tunnel UUID (shown in Networking → Tunnels)"
-  value       = cloudflare_zero_trust_tunnel_cloudflared.chatbot.id
-}
-
-output "tunnel_token_ssm_parameter" {
-  description = "SSM Parameter Store name holding the tunnel token (SecureString)"
-  value       = aws_ssm_parameter.cloudflare_tunnel_token.name
-}
-
 output "vpc_id" {
   description = "The ID of the custom VPC"
   value       = module.vpc.vpc_id

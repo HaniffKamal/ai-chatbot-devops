@@ -145,9 +145,8 @@ ai-chatbot-devops/
 │   ├── iam.tf                  # SSM instance role and profile
 │   ├── cost_saver.tf           # EventBridge + Lambda auto-stop
 │   ├── inventory.tf            # Renders ansible/inventory.ini
-│   ├── variables.tf            # Configurable inputs (AWS + Cloudflare IDs)
-│   ├── outputs.tf              # EC2 ID, chatbot URL, tunnel ID, SSM parameter
-│   ├── tunnel.tf               # Cloudflare Tunnel, ingress, CNAME, SSM token
+│   ├── variables.tf            # Configurable AWS inputs
+│   ├── outputs.tf              # EC2 ID, public IP, chatbot URL
 │   └── terraform.tfvars.example
 ├── ansible/
 │   ├── playbook.yaml           # System updates, Docker install, host directories
@@ -229,24 +228,21 @@ These are the exact commands CI runs, so a clean local run means a green pipelin
 
 ## 🚢 Production Deployment Workflow
 
-### 0. Cloudflare API Token (Terraform)
+### 0. Cloudflare Tunnel (one-time, manual)
 
-Create a **scoped** API token in the Cloudflare dashboard → My Profile → API Tokens → Create Token → Custom token:
+The tunnel is intentionally **not** managed by Terraform, so it survives
+`terraform destroy` and rebuilds.
 
-| Scope | Permission |
-|---|---|
-| Account → Cloudflare Tunnel | Edit |
-| Zone → DNS | Edit |
-
-Then export it (never commit it):
+1. Zero Trust → Networks → Tunnels → Create a tunnel (`cloudflared`), copy the token.
+2. Add a public hostname: `chatbot.haniffkamal.my` → `http://frontend:8080`
+   (the frontend container on the `chatbot-net` Docker network). Cloudflare
+   creates the proxied CNAME automatically.
+3. Store the token as an SSM `SecureString`:
 
 ```bash
-export CLOUDFLARE_API_TOKEN="your-scoped-token"
+aws ssm put-parameter --name /chatbot/prod/cloudflare_tunnel_token \
+  --type SecureString --value '<TOKEN>' --region ap-southeast-1 --overwrite
 ```
-
-Find the two IDs and put them in `terraform.tfvars` (see `terraform.tfvars.example`):
-- **Account ID** — the `dash.cloudflare.com/<account-id>/...` URL.
-- **Zone ID** — the `haniffkamal.my` zone Overview page, right-hand sidebar.
 
 ### 1. Infrastructure Provisioning (Terraform)
 ```bash
@@ -255,8 +251,7 @@ terraform init
 terraform plan -out=tfplan
 terraform apply tfplan
 
-# Terraform creates the tunnel, its ingress config, the proxied CNAME for
-# chatbot.haniffkamal.my, and the SSM SecureString holding the tunnel token.
+# Terraform provisions AWS only (VPC, SG, IAM, EC2, Lambda, EventBridge).
 # ansible/inventory.ini is rendered automatically on apply — no manual step.
 terraform output chatbot_url
 ```
