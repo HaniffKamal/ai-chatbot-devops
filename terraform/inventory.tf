@@ -10,7 +10,7 @@
 resource "local_file" "ansible_inventory" {
   filename = "${path.module}/../ansible/inventory.ini"
   content = templatefile("${path.module}/templates/inventory.ini.tftpl", {
-    instance_id = aws_instance.chatbot.id
+    instance_id = module.ec2.id
     ssh_user    = "ubuntu"
   })
 }
