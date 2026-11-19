@@ -78,16 +78,9 @@ module "ec2" {
     }
   }
 
-  # Thin Bootstrap: Minimal initialization required for Ansible / SSM connectivity
-  # All software installation (Docker, workspace, etc.) is owned strictly by Ansible.
-  user_data = <<-EOF
-              #!/bin/bash
-              set -e
-
-              # Ensure Amazon SSM Agent is active (pre-installed on Ubuntu 26.04 LTS)
-              systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service || true
-              systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service || true
-              EOF
+  # Thin bootstrap: start the SSM Agent so Session Manager and Ansible (over
+  # SSM) can reach the instance. Application provisioning lives in Ansible.
+  user_data = file("${path.module}/userdata.sh")
 
   tags = {
     Name = "${var.project_name}-ec2"
