@@ -4,12 +4,12 @@
 
 output "ec2_instance_id" {
   description = "The EC2 Instance ID (used for AWS SSM Session Manager and Ansible inventory)"
-  value       = aws_instance.chatbot.id
+  value       = module.ec2.id
 }
 
 output "ec2_public_ip" {
   description = "The EC2 public IPv4 (egress only; no DNS record or inbound rule depends on it)"
-  value       = aws_instance.chatbot.public_ip
+  value       = module.ec2.public_ip
 }
 
 output "chatbot_url" {
@@ -29,25 +29,25 @@ output "tunnel_token_ssm_parameter" {
 
 output "vpc_id" {
   description = "The ID of the custom VPC"
-  value       = aws_vpc.main.id
+  value       = module.vpc.vpc_id
 }
 
 output "public_subnet_id" {
   description = "The ID of the public subnet"
-  value       = aws_subnet.public.id
+  value       = module.vpc.public_subnets[0]
 }
 
 output "security_group_id" {
   description = "The ID of the security group (zero inbound rules)"
-  value       = aws_security_group.web.id
+  value       = module.web_sg.id
 }
 
 output "cost_saver_lambda_name" {
   description = "Name of the automated FinOps Lambda shutdown function"
-  value       = aws_lambda_function.cost_saver.function_name
+  value       = module.lambda.lambda_function_name
 }
 
 output "ssm_connect_command" {
   description = "Command to connect directly into the EC2 instance via AWS SSM Session Manager"
-  value       = "aws ssm start-session --target ${aws_instance.chatbot.id} --region ${var.aws_region}"
+  value       = "aws ssm start-session --target ${module.ec2.id} --region ${var.aws_region}"
 }

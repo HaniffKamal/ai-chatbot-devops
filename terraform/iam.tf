@@ -1,47 +1,123 @@
 # ==============================================================================
-# IAM Roles & Instance Profiles: AWS Systems Manager (SSM) Integration
+# IAM Roles & Policies: SSM access + Lambda cost-saver (module-managed)
 # ==============================================================================
+# Modules (versions confirmed through the Terraform MCP registry lookup):
+#   terraform-aws-modules/iam/aws//modules/iam-role    v6.11.1
+#   terraform-aws-modules/iam/aws//modules/iam-policy  v6.11.1
+#
 # Security Guardrails:
-#   1. Least Privilege: Attaches only the AWS-managed policy 'AmazonSSMManagedInstanceCore'.
-#   2. Zero Key Management: Grants the EC2 instance identity permissions to register
-#      with AWS Systems Manager, enabling secure web-based shell and CLI access
-#      without distributing or rotating static SSH private keys.
+#   1. EC2 role trusts only ec2.amazonaws.com, carries only
+#      AmazonSSMManagedInstanceCore, and is served through an instance profile.
+#   2. Lambda role trusts only lambda.amazonaws.com with the least-privilege
+#      policy scoped to the specific EC2 instance ARN.
+#   3. No wildcard actions, no wild resource-level permissions.
+#
+# use_name_prefix = false keeps the role/profile names byte-for-byte identical
+# to the pre-module resources, so the existing roles and instance profile can be
+# adopted with `terraform state mv` instead of being replaced.
 # ==============================================================================
 
-resource "aws_iam_role" "ec2_ssm_role" {
-  name        = "${var.project_name}-ec2-ssm-role"
-  description = "Allows EC2 instance to communicate with AWS Systems Manager (SSM)"
+# --- EC2 SSM role -------------------------------------------------------------
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
-  })
+module "ec2_ssm_role" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role"
+  version = "~> 6.11"
+
+  name            = "${var.project_name}-ec2-ssm-role"
+  description     = "Allows EC2 instance to communicate with AWS Systems Manager (SSM)"
+  use_name_prefix = false
+
+  create_instance_profile = true
+
+  trust_policy_permissions = {
+    AllowEc2ToAssumeRole = {
+      actions = ["sts:AssumeRole"]
+      principals = [{
+        type        = "Service"
+        identifiers = ["ec2.amazonaws.com"]
+      }]
+    }
+  }
+
+  policies = {
+    ssm_managed_instance_core = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  }
 
   tags = {
     Name = "${var.project_name}-ec2-ssm-role"
   }
 }
 
-# Attach AmazonSSMManagedInstanceCore policy
-resource "aws_iam_role_policy_attachment" "ssm_core" {
-  role       = aws_iam_role.ec2_ssm_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
+# --- Lambda cost-saver role + policy -----------------------------------------
 
-# EC2 Instance Profile linking the role to the compute instance
-resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "${var.project_name}-ec2-instance-profile"
-  role = aws_iam_role.ec2_ssm_role.name
+module "lambda_role" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role"
+  version = "~> 6.11"
+
+  name            = "${var.project_name}-cost-saver-role"
+  description     = "Allows Lambda to inspect and stop the chatbot EC2 instance"
+  use_name_prefix = false
+
+  trust_policy_permissions = {
+    AllowLambdaToAssumeRole = {
+      actions = ["sts:AssumeRole"]
+      principals = [{
+        type        = "Service"
+        identifiers = ["lambda.amazonaws.com"]
+      }]
+    }
+  }
+
+  policies = {
+    cost_saver = module.lambda_policy.arn
+  }
 
   tags = {
-    Name = "${var.project_name}-ec2-instance-profile"
+    Name = "${var.project_name}-cost-saver-role"
+  }
+}
+
+# Least-privilege policy document (built by the AWS provider data source)
+data "aws_iam_policy_document" "lambda_cost_saver" {
+  statement {
+    sid    = "CloudWatchLogging"
+    effect = "Allow"
+
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+
+    resources = ["arn:aws:logs:*:*:*"]
+  }
+
+  statement {
+    sid    = "EC2Describe"
+    effect = "Allow"
+
+    actions   = ["ec2:DescribeInstances"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "EC2StopSpecificInstance"
+    effect = "Allow"
+
+    actions   = ["ec2:StopInstances"]
+    resources = [module.ec2.arn]
+  }
+}
+
+module "lambda_policy" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-policy"
+  version = "~> 6.11"
+
+  name        = "${var.project_name}-cost-saver-policy"
+  description = "Permissions to stop EC2 instance and emit CloudWatch logs"
+  policy      = data.aws_iam_policy_document.lambda_cost_saver.json
+
+  tags = {
+    Name = "${var.project_name}-cost-saver-policy"
   }
 }

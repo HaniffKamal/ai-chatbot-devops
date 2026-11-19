@@ -41,6 +41,7 @@ htmlcov/
 
 # Terraform
 **/.terraform/*
+terraform/builds/
 *.tfstate
 *.tfstate.*
 crash.log
