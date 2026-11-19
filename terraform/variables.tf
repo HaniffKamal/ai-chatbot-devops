@@ -71,13 +71,3 @@ variable "chatbot_subdomain" {
   type        = string
   default     = "chatbot"
 }
-
-variable "cloudflare_account_id" {
-  description = "Cloudflare account ID (Cloudflare Tunnel is account-scoped)"
-  type        = string
-}
-
-variable "cloudflare_zone_id" {
-  description = "Cloudflare zone ID for domain_name (used for the tunnel CNAME)"
-  type        = string
-}
