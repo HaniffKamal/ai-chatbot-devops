@@ -1,17 +1,20 @@
 # ==============================================================================
 # Serverless FinOps Automation: EventBridge + Lambda Auto-Stop (Rule 2.3)
 # ==============================================================================
-# Module (version confirmed through the Terraform MCP registry lookup):
-#   terraform-aws-modules/lambda/aws  v8.13.2
+# Modules (versions confirmed through the Terraform MCP registry lookup):
+#   terraform-aws-modules/lambda/aws       v8.13.2
+#   terraform-aws-modules/eventbridge/aws  v4.4.1
 #
 # Architectural Guardrails:
-#   1. Hybrid Architecture: Demonstrates combining stateful EC2 compute with
-#      serverless AWS Lambda for event-driven cost governance.
-#   2. Zero Bill Shock: Automatically issues a graceful StopInstances call daily
-#      at 14:00 UTC (22:00 MYT) to ensure the server never runs overnight.
-#   3. Principle of Least Privilege: the execution role is created in iam.tf
-#      (module.lambda_role) and attached here with create_role = false — the
-#      module never provisions its own broad role.
+#   1. Hybrid Architecture: stateful EC2 compute + serverless Lambda for
+#      event-driven cost governance.
+#   2. Zero Bill Shock: stops the EC2 instance daily at 14:00 UTC (22:00 MYT).
+#   3. Least Privilege: the execution role (trust + inline permissions) is
+#      created in iam.tf; the Lambda module never provisions its own role.
+#   4. The Lambda module owns the invoke permission via allowed_triggers — the
+#      EventBridge module does not create Lambda permissions by design.
+#   5. No custom event bus and no EventBridge IAM role: a scheduled rule
+#      targeting Lambda needs neither (create_bus/create_role = false).
 # ==============================================================================
 
 module "lambda" {
@@ -40,34 +43,49 @@ module "lambda" {
     INSTANCE_ID = module.ec2.id
   }
 
+  # EventBridge may invoke this function (the module creates the permission)
+  create_current_version_allowed_triggers = false
+  allowed_triggers = {
+    EventBridge = {
+      principal  = "events.amazonaws.com"
+      source_arn = module.eventbridge.eventbridge_rule_arns["${var.project_name}-nightly-stop"]
+    }
+  }
+
   tags = {
     Name = "${var.project_name}-auto-stop"
   }
 }
 
-# Amazon EventBridge Scheduled Rule (Cron: 14:00 UTC)
-resource "aws_cloudwatch_event_rule" "nightly_stop" {
-  name                = "${var.project_name}-nightly-stop"
-  description         = "Trigger Lambda to stop EC2 instance off-peak daily"
-  schedule_expression = var.auto_stop_cron
+module "eventbridge" {
+  source  = "terraform-aws-modules/eventbridge/aws"
+  version = "~> 4.4"
+
+  # Scheduled rules run on the default bus and need no EventBridge IAM role
+  create_bus  = false
+  create_role = false
+
+  # Keep the rule name exactly "<project>-nightly-stop" (no "-rule" suffix)
+  append_rule_postfix = false
+
+  rules = {
+    "${var.project_name}-nightly-stop" = {
+      description         = "Trigger Lambda to stop EC2 instance off-peak daily"
+      schedule_expression = var.auto_stop_cron
+    }
+  }
+
+  targets = {
+    "${var.project_name}-nightly-stop" = [
+      {
+        name      = "TriggerCostSaverLambda"
+        target_id = "TriggerCostSaverLambda"
+        arn       = module.lambda.lambda_function_arn
+      }
+    ]
+  }
 
   tags = {
     Name = "${var.project_name}-nightly-stop"
   }
-}
-
-# Target: Invoke the Lambda function
-resource "aws_cloudwatch_event_target" "lambda_target" {
-  rule      = aws_cloudwatch_event_rule.nightly_stop.name
-  target_id = "TriggerCostSaverLambda"
-  arn       = module.lambda.lambda_function_arn
-}
-
-# Permission: Allow EventBridge to invoke Lambda
-resource "aws_lambda_permission" "allow_eventbridge" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda.lambda_function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.nightly_stop.arn
 }

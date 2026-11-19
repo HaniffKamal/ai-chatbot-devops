@@ -1,15 +1,15 @@
 # ==============================================================================
 # IAM Roles & Policies: SSM access + Lambda cost-saver (module-managed)
 # ==============================================================================
-# Modules (versions confirmed through the Terraform MCP registry lookup):
-#   terraform-aws-modules/iam/aws//modules/iam-role    v6.11.1
-#   terraform-aws-modules/iam/aws//modules/iam-policy  v6.11.1
+# Module (version confirmed through the Terraform MCP registry lookup):
+#   terraform-aws-modules/iam/aws//modules/iam-role  v6.11.1
 #
 # Security Guardrails:
 #   1. EC2 role trusts only ec2.amazonaws.com, carries only
 #      AmazonSSMManagedInstanceCore, and is served through an instance profile.
-#   2. Lambda role trusts only lambda.amazonaws.com with the least-privilege
-#      policy scoped to the specific EC2 instance ARN.
+#   2. Lambda role trusts only lambda.amazonaws.com. Its permissions are an
+#      inline policy built by the module itself (create_inline_policy +
+#      inline_policy_permissions), scoped to the specific EC2 instance ARN.
 #   3. No wildcard actions, no wild resource-level permissions.
 #
 # use_name_prefix = false keeps the role/profile names byte-for-byte identical
@@ -48,7 +48,7 @@ module "ec2_ssm_role" {
   }
 }
 
-# --- Lambda cost-saver role + policy -----------------------------------------
+# --- Lambda cost-saver role (trust + inline permissions) ----------------------
 
 module "lambda_role" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role"
@@ -68,56 +68,32 @@ module "lambda_role" {
     }
   }
 
-  policies = {
-    cost_saver = module.lambda_policy.arn
+  # Least-privilege permissions: the module builds the policy document from
+  # these statements and attaches it as an inline policy to the role.
+  create_inline_policy = true
+
+  inline_policy_permissions = {
+    CloudWatchLogging = {
+      actions = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+      ]
+      resources = ["arn:aws:logs:*:*:*"]
+    }
+
+    EC2Describe = {
+      actions   = ["ec2:DescribeInstances"]
+      resources = ["*"]
+    }
+
+    EC2StopSpecificInstance = {
+      actions   = ["ec2:StopInstances"]
+      resources = [module.ec2.arn]
+    }
   }
 
   tags = {
     Name = "${var.project_name}-cost-saver-role"
-  }
-}
-
-# Least-privilege policy document (built by the AWS provider data source)
-data "aws_iam_policy_document" "lambda_cost_saver" {
-  statement {
-    sid    = "CloudWatchLogging"
-    effect = "Allow"
-
-    actions = [
-      "logs:CreateLogGroup",
-      "logs:CreateLogStream",
-      "logs:PutLogEvents",
-    ]
-
-    resources = ["arn:aws:logs:*:*:*"]
-  }
-
-  statement {
-    sid    = "EC2Describe"
-    effect = "Allow"
-
-    actions   = ["ec2:DescribeInstances"]
-    resources = ["*"]
-  }
-
-  statement {
-    sid    = "EC2StopSpecificInstance"
-    effect = "Allow"
-
-    actions   = ["ec2:StopInstances"]
-    resources = [module.ec2.arn]
-  }
-}
-
-module "lambda_policy" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-policy"
-  version = "~> 6.11"
-
-  name        = "${var.project_name}-cost-saver-policy"
-  description = "Permissions to stop EC2 instance and emit CloudWatch logs"
-  policy      = data.aws_iam_policy_document.lambda_cost_saver.json
-
-  tags = {
-    Name = "${var.project_name}-cost-saver-policy"
   }
 }
