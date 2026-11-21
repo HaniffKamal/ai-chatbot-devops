@@ -42,7 +42,7 @@ services:
   # Outbound-only connector to the Cloudflare edge (no inbound ports).
   # cloudflared.env is rendered by Ansible from an SSM SecureString.
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.3
+    image: cloudflare/cloudflared:latest
     container_name: chatbot-cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run

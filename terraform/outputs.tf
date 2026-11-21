@@ -12,11 +12,6 @@ output "ec2_public_ip" {
   value       = module.ec2.public_ip
 }
 
-output "chatbot_url" {
-  description = "Public HTTPS endpoint served through the Cloudflare Tunnel"
-  value       = "https://${var.chatbot_subdomain}.${var.domain_name}"
-}
-
 output "vpc_id" {
   description = "The ID of the custom VPC"
   value       = module.vpc.vpc_id

@@ -253,7 +253,6 @@ terraform apply tfplan
 
 # Terraform provisions AWS only (VPC, SG, IAM, EC2, Lambda, EventBridge).
 # ansible/inventory.ini is rendered automatically on apply — no manual step.
-terraform output chatbot_url
 ```
 
 ### 2. Server Configuration & Deployment (Ansible)

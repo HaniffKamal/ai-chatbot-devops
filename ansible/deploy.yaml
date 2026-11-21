@@ -74,9 +74,9 @@
         mode: "0600"
       no_log: true
 
-    - name: Render Cloudflare Tunnel connector env file (Strict 0600 permissions)
-      ansible.builtin.template:
-        src: "templates/cloudflared.env.j2"
+    - name: Render Cloudflare Tunnel token env file (Strict 0600 permissions)
+      ansible.builtin.copy:
+        content: "TUNNEL_TOKEN={{ cloudflare_tunnel_token }}\n"
         dest: "{{ app_directory }}/cloudflared.env"
         owner: ubuntu
         group: ubuntu

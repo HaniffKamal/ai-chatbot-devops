@@ -14,7 +14,3 @@ instance_type       = "m7i-flex.large"
 root_volume_size    = 30
 auto_stop_cron      = "cron(0 14 * * ? *)"
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
-
-# Cloudflare Tunnel (tunnel + DNS created manually; token stored in SSM)
-domain_name       = "haniffkamal.my"
-chatbot_subdomain = "chatbot"

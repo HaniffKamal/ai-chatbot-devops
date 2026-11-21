@@ -55,19 +55,3 @@ variable "ssh_public_key_path" {
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
 }
-
-# ------------------------------------------------------------------------------
-# Cloudflare Tunnel (Zero Inbound Ports)
-# ------------------------------------------------------------------------------
-
-variable "domain_name" {
-  description = "Cloudflare-managed apex domain"
-  type        = string
-  default     = "haniffkamal.my"
-}
-
-variable "chatbot_subdomain" {
-  description = "Subdomain routed through the Cloudflare Tunnel to the frontend"
-  type        = string
-  default     = "chatbot"
-}
