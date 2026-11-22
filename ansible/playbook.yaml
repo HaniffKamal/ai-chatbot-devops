@@ -4,6 +4,7 @@
 # Target: AWS EC2 Instance (m7i-flex.large, Ubuntu 26.04 LTS)
 # Connection: SSH tunneled over AWS SSM Session Manager (Rule 1.2: Zero Port 22)
 # Idempotency: All tasks declare desired state; re-running produces changed=0.
+# Docker is installed by the pinned Galaxy role declared in requirements.yaml.
 # ==============================================================================
 
 - name: Configure AI Chatbot Production Host
@@ -13,109 +14,58 @@
 
   vars:
     app_directory: "/opt/chatbot"
-    docker_packages:
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
-      - docker-compose-plugin
 
   tasks:
     # --------------------------------------------------------------------------
-    # 1. System Package Maintenance & Base Utilities
+    # 1. Base Utilities
     # --------------------------------------------------------------------------
-    - name: Update apt package cache
+    - name: Install base utilities
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
-
-    - name: Install essential system packages
-      ansible.builtin.apt:
         name:
-          - ca-certificates
           - curl
-          - gnupg
           - git
           - htop
         state: present
 
     # --------------------------------------------------------------------------
-    # 2. Docker Official Repository & Engine Installation
+    # 2. Docker Engine + Compose plugin (geerlingguy.docker v8.0.1)
+    #    The role owns the apt repo, packages, service, compose plugin,
+    #    docker group membership, and handler-driven restarts.
     # --------------------------------------------------------------------------
-    - name: Create directory for Docker apt keyrings
-      ansible.builtin.file:
-        path: /etc/apt/keyrings
-        state: directory
-        mode: "0755"
-
-    - name: Download official Docker GPG signing key
-      ansible.builtin.get_url:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /etc/apt/keyrings/docker.asc
-        mode: "0644"
-
-    - name: Configure official Docker APT repository
-      ansible.builtin.apt_repository:
-        repo: "deb [arch={{ ansible_facts['architecture'] | regex_replace('x86_64', 'amd64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
-        state: present
-        filename: docker
-
     - name: Install Docker Engine and Compose plugin
-      ansible.builtin.apt:
-        name: "{{ docker_packages }}"
-        state: present
-        update_cache: true
-
-    - name: Ensure Docker service is enabled and running
-      ansible.builtin.service:
-        name: docker
-        state: started
-        enabled: true
-
-    - name: Add ubuntu user to docker group
-      ansible.builtin.user:
-        name: ubuntu
-        groups: docker
-        append: true
-
-    - name: Reset SSH connection so docker group takes effect
-      ansible.builtin.meta: reset_connection
+      ansible.builtin.include_role:
+        name: geerlingguy.docker
+      vars:
+        docker_users:
+          - ubuntu
 
     # --------------------------------------------------------------------------
     # 3. Application Directory Setup
     # --------------------------------------------------------------------------
-    - name: Create application deployment directory
+    - name: Create application directories
       ansible.builtin.file:
-        path: "{{ app_directory }}"
+        path: "{{ item }}"
         state: directory
         owner: ubuntu
         group: ubuntu
         mode: "0755"
-
-    - name: Create application logs directory
-      ansible.builtin.file:
-        path: "{{ app_directory }}/logs"
-        state: directory
-        owner: ubuntu
-        group: ubuntu
-        mode: "0755"
+      loop:
+        - "{{ app_directory }}"
+        - "{{ app_directory }}/logs"
 
     # --------------------------------------------------------------------------
-    # 4. Verification & Telemetry
+    # 4. Verification
     # --------------------------------------------------------------------------
-    - name: Verify Docker version
-      ansible.builtin.command: docker --version
-      register: docker_version_output
-      changed_when: false
-
-    - name: Verify Docker Compose version
-      ansible.builtin.command: docker compose version
-      register: compose_version_output
+    - name: Query Docker and Compose versions
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - docker --version
+        - docker compose version
+      register: docker_versions
       changed_when: false
 
     - name: Display installed engine versions
       ansible.builtin.debug:
-        msg:
-          - "Host: {{ inventory_hostname }}"
-          - "{{ docker_version_output.stdout }}"
-          - "{{ compose_version_output.stdout }}"
+        msg: "{{ docker_versions.results | map(attribute='stdout') | list }}"

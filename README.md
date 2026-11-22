@@ -76,7 +76,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 * **Non-Root Execution:** The backend runs as `appuser:appgroup` (UID/GID `10001`); the frontend image runs as the unprivileged Nginx user (UID 101).
 * **Zero Inbound Ports:** The Security Group has no ingress rules at all. Public traffic arrives through a Cloudflare Tunnel (`cloudflared`, outbound-only) and shell access is IAM-gated through SSM Session Manager.
 * **Origin Cloaking:** The tunnel publishes `chatbot.haniffkamal.my` without exposing the EC2 IP or any listening port.
-* **Zero Secret Leakage:** Secrets live in `.env` (0600, rendered by Ansible) or SSM `SecureString`; the tunnel token never enters Git or an image.
+* **Zero Secret Leakage:** Production secrets live in SSM `SecureString` (KMS-encrypted, IAM-gated, CloudTrail-audited) and are rendered into 0600 env files at deploy time. No secret enters Git, an image, or user-data.
 
 ### 3. ⚙️ Idempotent Infrastructure as Code (IaC)
 * **Terraform:** Declaratively defines the complete AWS topology (VPC, Subnet, Internet Gateway, Route Tables, Security Groups, and EC2 Compute).
@@ -149,7 +149,8 @@ ai-chatbot-devops/
 │   ├── outputs.tf              # EC2 ID, public IP, chatbot URL
 │   └── terraform.tfvars.example
 ├── ansible/
-│   ├── playbook.yaml           # System updates, Docker install, host directories
+│   ├── requirements.yaml       # Pinned Galaxy role (geerlingguy.docker) + collection
+│   ├── playbook.yaml           # Host setup: base packages, Docker role, app directories
 │   ├── deploy.yaml             # Release: render .env, pull image, restart, health gate
 │   └── inventory.ini           # Target host (rendered by Terraform)
 ├── monitoring/                 # (planned — not deployed yet)
@@ -237,11 +238,14 @@ The tunnel is intentionally **not** managed by Terraform, so it survives
 2. Add a public hostname: `chatbot.haniffkamal.my` → `http://frontend:8080`
    (the frontend container on the `chatbot-net` Docker network). Cloudflare
    creates the proxied CNAME automatically.
-3. Store the token as an SSM `SecureString`:
+3. Store the production secrets as SSM `SecureString` parameters:
 
 ```bash
-aws ssm put-parameter --name /chatbot/prod/cloudflare_tunnel_token \
-  --type SecureString --value '<TOKEN>' --region ap-southeast-1 --overwrite
+aws ssm put-parameter --name /chatbot/tunnel-token \
+  --type SecureString --value '<TUNNEL_TOKEN>' --region ap-southeast-1 --overwrite
+
+aws ssm put-parameter --name /chatbot/groq-api-key \
+  --type SecureString --value '<GROQ_API_KEY>' --region ap-southeast-1 --overwrite
 ```
 
 ### 1. Infrastructure Provisioning (Terraform)
@@ -256,17 +260,20 @@ terraform apply tfplan
 ```
 
 ### 2. Server Configuration & Deployment (Ansible)
+
+Requires `ansible-core >= 2.17` (the `community.docker` collection constraint).
+
 ```bash
 cd ../ansible
+ansible-galaxy install -r requirements.yaml       # once per controller: role + collection
 ansible-playbook -i inventory.ini playbook.yaml   # first-time host setup (Docker, dirs)
 ansible-playbook -i inventory.ini deploy.yaml     # render env files, pull images, restart
 ```
 
-`deploy.yaml` reads the token from SSM Parameter Store at
-`/chatbot/prod/cloudflare_tunnel_token` (it must match `var.environment` in
-`terraform/variables.tf`), so the AWS CLI on the controller must be authenticated.
-It renders both `.env` and `cloudflared.env` (0600), runs `docker compose pull`,
-and gates on `http://127.0.0.1:8080/health`.
+`deploy.yaml` reads both production secrets from SSM Parameter Store
+(`/chatbot/groq-api-key`, `/chatbot/tunnel-token`), so the AWS CLI on the
+controller must be authenticated. It renders `.env` and `cloudflared.env`
+(0600), runs `docker compose pull`, and gates on `http://127.0.0.1:8080/health`.
 
 ```bash
 curl -s https://chatbot.haniffkamal.my/health
