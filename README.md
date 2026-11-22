@@ -158,7 +158,10 @@ ai-chatbot-devops/
 │   └── prometheus.yaml.j2      # Scrape config template (host private IP rendered by Ansible)
 ├── scripts/
 │   ├── inspect_db.py           # ChromaDB inspector & semantic search CLI
-│   └── test_rate_limit.sh      # Verifies Nginx returns 429 past the burst
+│   ├── test_rate_limit.sh      # Verifies Nginx returns 429 past the burst
+│   ├── start-server.sh         # Start EC2 and wait for SSM Online
+│   └── stop-server.sh          # Stop EC2 (EBS data persists)
+├── Makefile                    # Dev, Terraform, Ansible, monitoring shortcuts
 ├── docker-compose.yaml         # Core service definitions (Frontend, Backend, Ollama profile)
 ├── docker-compose.dev.yaml     # Local dev overrides (NVIDIA GPU runtime)
 ├── docker-compose.prod.yaml    # Production: Groq-only, cloudflared, restart, limits
@@ -227,6 +230,24 @@ These are the exact commands CI runs, so a clean local run means a green pipelin
 
 ---
 
+## 🛠️ Make Targets
+
+`make` (or `make help`) lists every shortcut:
+
+| Target | What it does |
+|---|---|
+| `make up` / `make down` / `make logs` | Local dev stack (build, stop, follow logs) |
+| `make test` / `make fmt` | `ruff check` + `ruff format --check` + `pytest`; auto-fix variant |
+| `make tf-init` / `make tf-plan` / `make tf-apply` | Terraform |
+| `make start` / `make stop` | Start EC2 and wait for SSM Online; stop EC2 |
+| `make setup` / `make deploy` | First-time host setup; application release |
+| `make monitoring` | Prometheus + Grafana + node_exporter |
+| `make grafana` / `make prometheus` | SSM port-forward the UIs to localhost |
+
+Shell scripts behind the power targets live in `scripts/` (`start-server.sh`, `stop-server.sh`).
+
+---
+
 ## 🚢 Production Deployment Workflow
 
 ### 0. Cloudflare Tunnel (one-time, manual)
@@ -274,8 +295,8 @@ Then:
 
 ```bash
 cd ../ansible
-ansible-playbook -i inventory.ini playbook.yaml   # first-time host setup (Docker, dirs)
-ansible-playbook -i inventory.ini deploy.yaml     # render env files, pull images, restart
+ansible-playbook playbook.yaml   # first-time host setup (Docker, dirs)
+ansible-playbook deploy.yaml     # render env files, pull images, restart
 ```
 
 `deploy.yaml` reads both production secrets from SSM Parameter Store
@@ -299,7 +320,7 @@ the host's private IP into `prometheus.yaml` at deploy time.
 ```bash
 cd ansible
 ansible-galaxy collection install 'prometheus.prometheus:==0.30.2'
-ansible-playbook -i inventory.ini monitoring.yaml
+ansible-playbook monitoring.yaml
 ```
 
 Reach the UIs through SSM port forwarding (never through Cloudflare):
@@ -323,7 +344,7 @@ Every push to `main` and every pull request targeting it executes:
 1. **Linting & Formatting:** `ruff check` and `ruff format --check`.
 2. **Automated Testing:** `pytest` on FastAPI routes and RAG logic, with coverage reporting.
 3. **Container Image Build & Push:** On `main`, builds the affected images and pushes both `:latest` and an immutable `:<commit-sha>` to GHCR using the built-in `GITHUB_TOKEN` — `chatbot` when `backend/**` changes, `chatbot-frontend` when `frontend/**` changes.
-4. **Deployment:** Manual for now — `ansible-playbook -i inventory.ini ansible/deploy.yaml` over SSM pulls the freshly tagged backend and frontend images and restarts services. Automated CD and post-deploy verification are still pending.
+4. **Deployment:** Manual for now — `cd ansible && ansible-playbook deploy.yaml` over SSM pulls the freshly tagged backend and frontend images and restarts services. Automated CD and post-deploy verification are still pending.
 
 ---
 
