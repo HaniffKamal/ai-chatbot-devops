@@ -248,6 +248,7 @@ These are the exact commands CI runs, so a clean local run means a green pipelin
 | `make up` / `make down` / `make logs` | Local dev stack (build, stop, follow logs) |
 | `make test` / `make fmt` | `ruff check` + `ruff format --check` + `pytest`; auto-fix variant |
 | `make tf-init` / `make tf-plan` / `make tf-apply` | Terraform |
+| `make tf-destroy` | Destroy all Terraform resources (prompts; deletes EC2 + EBS data) |
 | `make start` / `make stop` | Start EC2 and wait for SSM Online; stop EC2 |
 | `make setup` / `make deploy` | First-time host setup; application release |
 | `make monitoring` | Prometheus + Grafana + node_exporter |

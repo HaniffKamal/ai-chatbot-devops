@@ -9,7 +9,7 @@ COMPOSE_DEV := docker compose -f docker-compose.yaml -f docker-compose.dev.yaml
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down logs test fmt tf-init tf-plan tf-apply start stop setup deploy monitoring grafana prometheus
+.PHONY: help up down logs test fmt tf-init tf-plan tf-apply tf-destroy start stop setup deploy monitoring grafana prometheus
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -42,8 +42,10 @@ tf-plan: ## Terraform plan
 tf-apply: ## Terraform apply
 	terraform -chdir=terraform apply
 
-tf-destroy:
-	terraform -chdir=terraform apply
+tf-destroy: ## Destroy ALL Terraform resources (deletes EC2 + EBS data)
+	@read -p "This deletes the EC2 instance and its disk. Type 'yes' to continue: " ans; \
+	[ "$$ans" = "yes" ] || { echo "aborted"; exit 1; }
+	terraform -chdir=terraform destroy
 
 start: ## Start EC2 and wait for SSM Online
 	bash scripts/start-server.sh
