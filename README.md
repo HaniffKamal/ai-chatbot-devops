@@ -1,7 +1,7 @@
 # 🤖 AI Chatbot Microservice & MLOps Infrastructure Platform
 
 [![CI/CD Pipeline](https://github.com/HaniffKamal/ai-chatbot-devops/actions/workflows/ci.yaml/badge.svg)](https://github.com/HaniffKamal/ai-chatbot-devops/actions)
-[![FastAPI](https://img.shields.com/badge/FastAPI-0.111+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com)
 [![Ollama](https://img.shields.io/badge/Ollama-NVIDIA_GPU-black?style=flat&logo=ollama&logoColor=white)](https://ollama.ai)
 [![Terraform](https://img.shields.io/badge/Terraform-AWS_IaC-7B42BC?style=flat&logo=terraform&logoColor=white)](https://www.terraform.io)
@@ -61,7 +61,12 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-> **Production note:** the EC2 stack runs **cloudflared + Nginx + FastAPI only**. Ingress is a Cloudflare Tunnel, so the Security Group has no inbound rules. Ollama is a local-development profile; production uses the Groq API (`openai/gpt-oss-20b`) because the host is CPU-only with 8 GiB RAM. Prometheus/Grafana are planned, not deployed.
+> **Production note:** the EC2 stack runs **cloudflared + Nginx + FastAPI**, plus a separate
+> monitoring Compose project (`/opt/monitoring`) with Prometheus + Grafana. Ingress is a
+> Cloudflare Tunnel, so the Security Group has no inbound rules. Ollama is a
+> local-development profile; production uses the Groq API (`openai/gpt-oss-20b`) because the
+> host is CPU-only with 8 GiB RAM. Monitoring UIs are loopback-only and reached via SSM
+> port forwarding.
 
 ---
 
@@ -79,16 +84,16 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 * **Zero Secret Leakage:** Production secrets live in SSM `SecureString` (KMS-encrypted, IAM-gated, CloudTrail-audited) and are rendered into 0600 env files at deploy time. No secret enters Git, an image, or user-data.
 
 ### 3. ⚙️ Idempotent Infrastructure as Code (IaC)
-* **Terraform:** Declaratively defines the complete AWS topology (VPC, Subnet, Internet Gateway, Route Tables, Security Groups, and EC2 Compute).
-* **Ansible:** Fully idempotent server provisioning (Docker Engine installation, application directory, rendered production `.env`).
+* **Terraform:** Official `terraform-aws-modules` for VPC, security group, IAM, Lambda, EventBridge, and EC2; direct resources only where no module fits (Cloudflare tunnel is manual/out-of-band).
+* **Ansible:** Docker Engine + Compose plugin via the pinned `geerlingguy.docker` Galaxy role; node_exporter via `prometheus.prometheus`; idempotent host directories and rendered production `.env`.
 * **Cost Optimization:** EC2 runs on-demand and is stopped nightly by the EventBridge + Lambda FinOps job. No NAT Gateway and no idle Elastic IP, keeping monthly infrastructure costs at **$0.00**.
 
-### 4. 📊 Full Observability Stack
+### 4. 📊 Observability Stack (phase 1)
 
-> **Status:** planned — Prometheus/Grafana are not deployed yet and `/metrics` is not exposed.
-
-* **Prometheus:** Scrapes real-time application throughput, request latency, and HTTP error distributions from `/metrics`.
-* **Grafana:** Pre-provisioned dashboards using YAML datasources to visualize server load and inference performance with zero manual UI setup.
+* **Prometheus:** Scrapes itself and the host-installed node_exporter (15s interval), with a 5 GB TSDB cap.
+* **node_exporter:** Host system metrics (CPU, memory, disk, network) installed by Ansible.
+* **Grafana:** Loopback-only UI; datasource and dashboards are built manually, then exported as JSON into `monitoring/dashboards/`.
+* **Backend `/metrics`:** not instrumented yet — planned for phase 2.
 
 ---
 
@@ -103,10 +108,10 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 | **LLM Engine (prod)** | Groq Cloud LPU (`openai/gpt-oss-20b`) | CPU-free inference on EC2; no Ollama container |
 | **Edge Ingress** | Cloudflare Tunnel (`cloudflared` 2026.10.3) | Outbound-only connector; origin exposes no inbound ports |
 | **Vector Store** | ChromaDB (Embedded) | In-process vector database for resume context search |
-| **Infrastructure** | Terraform | AWS Cloud VPC and EC2 provisioning |
-| **Configuration** | Ansible | Automated host configuration and Docker orchestration |
+| **Infrastructure** | Terraform | VPC, SG, IAM, EC2, Lambda, EventBridge (official modules) |
+| **Configuration** | Ansible | Host setup (Docker Galaxy role), secrets, deploys, monitoring |
 | **CI/CD** | GitHub Actions | Automated linting, formatting, testing, and image publishing |
-| **Metrics** | Prometheus & Grafana | Endpoint performance and system telemetry |
+| **Metrics** | Prometheus, Grafana, node_exporter | Host and system telemetry |
 
 ---
 
@@ -141,12 +146,13 @@ ai-chatbot-devops/
 │   ├── backend.tf              # S3 remote state (encrypted, versioned)
 │   ├── vpc.tf                  # VPC, public subnet, IGW, route table
 │   ├── security_groups.tf      # Zero ingress rules; tunnel is outbound-only
-│   ├── ec2.tf                  # m7i-flex.large, gp3 root volume, SSM profile
-│   ├── iam.tf                  # SSM instance role and profile
+│   ├── ec2.tf                  # EC2 module: m7i-flex.large, gp3 root, SSM profile
+│   ├── iam.tf                  # SSM role/profile + Lambda inline permissions
 │   ├── cost_saver.tf           # EventBridge + Lambda auto-stop
 │   ├── inventory.tf            # Renders ansible/inventory.ini
+│   ├── userdata.sh             # First-boot SSM Agent bootstrap
 │   ├── variables.tf            # Configurable AWS inputs
-│   ├── outputs.tf              # EC2 ID, public IP, chatbot URL
+│   ├── outputs.tf              # EC2 ID/IPs and SSM connect command
 │   └── terraform.tfvars.example
 ├── ansible/
 │   ├── playbook.yaml           # Host setup: base packages, Docker role, app directories
@@ -192,6 +198,9 @@ cp .env.example .env
 ```bash
 # Start all containers in the background with GPU acceleration
 docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d --build
+
+# or simply
+make up
 ```
 
 ### 4. Pull the LLM Model into Ollama
@@ -338,6 +347,8 @@ aws ssm start-session --target <instance-id> \
 Grafana: `http://localhost:3000` (`admin/admin` on first login — change it).
 Add the Prometheus datasource `http://prometheus:9090`, build dashboards in the
 UI, then export them to `monitoring/dashboards/<name>.json` for the repo.
+
+Shortcut: `make grafana` and `make prometheus` run the port-forward commands for you.
 
 ### 4. Automated CI/CD (GitHub Actions)
 Every push to `main` and every pull request targeting it executes:
