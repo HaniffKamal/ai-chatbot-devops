@@ -41,3 +41,13 @@ output "ssm_connect_command" {
   description = "Command to connect directly into the EC2 instance via AWS SSM Session Manager"
   value       = "aws ssm start-session --target ${module.ec2.id} --region ${var.aws_region}"
 }
+
+output "grafana_port_forward_command" {
+  description = "Copy/paste to open Grafana at http://localhost:3000 (SSM port forwarding, no open SG ports)"
+  value       = "aws ssm start-session --target ${module.ec2.id} --document-name AWS-StartPortForwardingSession --parameters '{\"portNumber\":[\"3000\"],\"localPortNumber\":[\"3000\"]}' --region ${var.aws_region}"
+}
+
+output "prometheus_port_forward_command" {
+  description = "Copy/paste to open Prometheus at http://localhost:9090 (SSM port forwarding, no open SG ports)"
+  value       = "aws ssm start-session --target ${module.ec2.id} --document-name AWS-StartPortForwardingSession --parameters '{\"portNumber\":[\"9090\"],\"localPortNumber\":[\"9090\"]}' --region ${var.aws_region}"
+}
