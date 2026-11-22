@@ -12,8 +12,6 @@ services:
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=15d
       - --storage.tsdb.retention.size=5GB
     ports:
       - "127.0.0.1:9090:9090"
@@ -37,7 +35,7 @@ services:
       resources:
         limits:
           cpus: "0.50"
-          memory: 256M
+          memory: 512M
 
 volumes:
   prometheus-data:
