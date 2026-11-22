@@ -149,13 +149,13 @@ ai-chatbot-devops/
 │   ├── outputs.tf              # EC2 ID, public IP, chatbot URL
 │   └── terraform.tfvars.example
 ├── ansible/
-│   ├── requirements.yaml       # Pinned Galaxy role (geerlingguy.docker) + collection
 │   ├── playbook.yaml           # Host setup: base packages, Docker role, app directories
 │   ├── deploy.yaml             # Release: render .env, pull image, restart, health gate
+│   ├── monitoring.yaml         # Monitoring stack + node_exporter
 │   └── inventory.ini           # Target host (rendered by Terraform)
-├── monitoring/                 # (planned — not deployed yet)
-│   ├── prometheus.yml          # Scrape configuration
-│   └── grafana/                # Auto-provisioned datasources and dashboards
+├── monitoring/
+│   ├── compose.yaml            # Prometheus + Grafana (separate Compose project)
+│   └── prometheus.yaml.j2      # Scrape config template (host private IP rendered by Ansible)
 ├── scripts/
 │   ├── inspect_db.py           # ChromaDB inspector & semantic search CLI
 │   └── test_rate_limit.sh      # Verifies Nginx returns 429 past the burst
@@ -261,11 +261,19 @@ terraform apply tfplan
 
 ### 2. Server Configuration & Deployment (Ansible)
 
-Requires `ansible-core >= 2.17` (the `community.docker` collection constraint).
+Requires `ansible-core >= 2.17`.
+
+Install the pinned Galaxy dependencies once per controller:
+
+```bash
+ansible-galaxy role install geerlingguy.docker,8.0.1
+ansible-galaxy collection install 'community.docker:==5.4.0'
+```
+
+Then:
 
 ```bash
 cd ../ansible
-ansible-galaxy install -r requirements.yaml       # once per controller: role + collection
 ansible-playbook -i inventory.ini playbook.yaml   # first-time host setup (Docker, dirs)
 ansible-playbook -i inventory.ini deploy.yaml     # render env files, pull images, restart
 ```
@@ -282,7 +290,35 @@ curl -s https://chatbot.haniffkamal.my/health
 If an old `api.haniffkamal.my` A record still exists in Cloudflare, delete it — the
 tunnel's CNAME is the only record that should point at the chatbot.
 
-### 3. Automated CI/CD (GitHub Actions)
+### 3. Monitoring (phase 1)
+
+Prometheus + Grafana run as a separate Compose project in `/opt/monitoring`;
+node_exporter is installed on the host by the Ansible role, and Ansible renders
+the host's private IP into `prometheus.yaml` at deploy time.
+
+```bash
+cd ansible
+ansible-galaxy collection install 'prometheus.prometheus:==0.30.2'
+ansible-playbook -i inventory.ini monitoring.yaml
+```
+
+Reach the UIs through SSM port forwarding (never through Cloudflare):
+
+```bash
+aws ssm start-session --target <instance-id> \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'
+
+aws ssm start-session --target <instance-id> \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["9090"],"localPortNumber":["9090"]}'
+```
+
+Grafana: `http://localhost:3000` (`admin/admin` on first login — change it).
+Add the Prometheus datasource `http://prometheus:9090`, build dashboards in the
+UI, then export them to `monitoring/dashboards/<name>.json` for the repo.
+
+### 4. Automated CI/CD (GitHub Actions)
 Every push to `main` and every pull request targeting it executes:
 1. **Linting & Formatting:** `ruff check` and `ruff format --check`.
 2. **Automated Testing:** `pytest` on FastAPI routes and RAG logic, with coverage reporting.

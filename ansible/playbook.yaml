@@ -4,7 +4,7 @@
 # Target: AWS EC2 Instance (m7i-flex.large, Ubuntu 26.04 LTS)
 # Connection: SSH tunneled over AWS SSM Session Manager (Rule 1.2: Zero Port 22)
 # Idempotency: All tasks declare desired state; re-running produces changed=0.
-# Docker is installed by the pinned Galaxy role declared in requirements.yaml.
+# Docker is installed by the pinned Galaxy role (see README for install commands).
 # ==============================================================================
 
 - name: Configure AI Chatbot Production Host

@@ -1,0 +1,19 @@
+# ==============================================================================
+# Prometheus Scrape Configuration (phase 1) — rendered by Ansible
+# ==============================================================================
+# node_exporter runs on the host via the Ansible role. Ansible renders its
+# primary private IP here at deploy time, so the target stays correct after
+# an instance rebuild (no hardcoded IP, no host.docker.internal).
+# ==============================================================================
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["{{ ansible_facts['default_ipv4']['address'] }}:9100"]
