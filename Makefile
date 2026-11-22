@@ -42,6 +42,9 @@ tf-plan: ## Terraform plan
 tf-apply: ## Terraform apply
 	terraform -chdir=terraform apply
 
+tf-destroy:
+	terraform -chdir=terraform apply
+
 start: ## Start EC2 and wait for SSM Online
 	bash scripts/start-server.sh
 
