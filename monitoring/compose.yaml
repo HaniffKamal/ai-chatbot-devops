@@ -1,0 +1,44 @@
+# ==============================================================================
+# Monitoring Stack: Prometheus + Grafana (separate Compose project)
+# ==============================================================================
+# Deployed to /opt/monitoring by ansible/monitoring.yaml.
+# Loopback-only ports: reach both UIs through SSM port forwarding.
+# node_exporter runs on the host (Ansible role), not in this stack.
+# ==============================================================================
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=5GB
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+volumes:
+  prometheus-data:
+  grafana-data:

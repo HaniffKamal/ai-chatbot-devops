@@ -1,0 +1,71 @@
+# ==============================================================================
+# Ansible Playbook: Monitoring Stack (Prometheus + Grafana + node_exporter)
+# ==============================================================================
+# Target: AWS EC2 Instance (Ubuntu 26.04 LTS)
+# Connection: SSH tunneled over AWS SSM Session Manager (Rule 1.2: Zero Port 22)
+# Stack: separate Compose project in /opt/monitoring (independent lifecycle).
+# Dashboards: none provisioned — built manually in the Grafana UI and exported
+# to monitoring/dashboards/*.json.
+# ==============================================================================
+
+- name: Deploy monitoring stack (Prometheus + Grafana) and node_exporter
+  hosts: chatbot
+  become: true
+  gather_facts: true
+
+  vars:
+    monitoring_directory: "/opt/monitoring"
+
+  roles:
+    - role: prometheus.prometheus.node_exporter
+      vars:
+        node_exporter_version: "1.12.1"
+
+  tasks:
+    - name: Create monitoring directory
+      file:
+        path: "{{ monitoring_directory }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Copy Compose specification
+      copy:
+        src: "../monitoring/compose.yaml"
+        dest: "{{ monitoring_directory }}/compose.yaml"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0644"
+
+    - name: Render Prometheus configuration (private IP of this host)
+      template:
+        src: "../monitoring/prometheus.yaml.j2"
+        dest: "{{ monitoring_directory }}/prometheus.yaml"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0644"
+
+    - name: Start monitoring stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_directory }}"
+        state: present
+        pull: policy
+
+    - name: Wait for Prometheus readiness
+      uri:
+        url: "http://127.0.0.1:9090/-/ready"
+        status_code: 200
+      register: prometheus_ready
+      retries: 20
+      delay: 3
+      until: prometheus_ready.status == 200
+
+    - name: Wait for Grafana health
+      uri:
+        url: "http://127.0.0.1:3000/api/health"
+        status_code: 200
+      register: grafana_health
+      retries: 20
+      delay: 3
+      until: grafana_health.status == 200
