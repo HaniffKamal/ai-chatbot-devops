@@ -23,7 +23,7 @@
 
   tasks:
     - name: Create monitoring directory
-      ansible.builtin.file:
+      file:
         path: "{{ monitoring_directory }}"
         state: directory
         owner: ubuntu
@@ -31,7 +31,7 @@
         mode: "0755"
 
     - name: Copy Compose specification
-      ansible.builtin.copy:
+      copy:
         src: "../monitoring/compose.yaml"
         dest: "{{ monitoring_directory }}/compose.yaml"
         owner: ubuntu
@@ -39,7 +39,7 @@
         mode: "0644"
 
     - name: Render Prometheus configuration (private IP of this host)
-      ansible.builtin.template:
+      template:
         src: "../monitoring/prometheus.yaml.j2"
         dest: "{{ monitoring_directory }}/prometheus.yaml"
         owner: ubuntu
@@ -53,7 +53,7 @@
         pull: policy
 
     - name: Wait for Prometheus readiness
-      ansible.builtin.uri:
+      uri:
         url: "http://127.0.0.1:9090/-/ready"
         status_code: 200
       register: prometheus_ready
@@ -62,7 +62,7 @@
       until: prometheus_ready.status == 200
 
     - name: Wait for Grafana health
-      ansible.builtin.uri:
+      uri:
         url: "http://127.0.0.1:3000/api/health"
         status_code: 200
       register: grafana_health

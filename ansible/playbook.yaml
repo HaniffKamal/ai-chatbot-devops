@@ -20,7 +20,7 @@
     # 1. Base Utilities
     # --------------------------------------------------------------------------
     - name: Install base utilities
-      ansible.builtin.apt:
+      apt:
         update_cache: true
         cache_valid_time: 3600
         name:
@@ -35,7 +35,7 @@
     #    docker group membership, and handler-driven restarts.
     # --------------------------------------------------------------------------
     - name: Install Docker Engine and Compose plugin
-      ansible.builtin.include_role:
+      include_role:
         name: geerlingguy.docker
       vars:
         docker_users:
@@ -45,7 +45,7 @@
     # 3. Application Directory Setup
     # --------------------------------------------------------------------------
     - name: Create application directories
-      ansible.builtin.file:
+      file:
         path: "{{ item }}"
         state: directory
         owner: ubuntu
@@ -59,7 +59,7 @@
     # 4. Verification
     # --------------------------------------------------------------------------
     - name: Query Docker and Compose versions
-      ansible.builtin.command: "{{ item }}"
+      command: "{{ item }}"
       loop:
         - docker --version
         - docker compose version
@@ -67,5 +67,5 @@
       changed_when: false
 
     - name: Display installed engine versions
-      ansible.builtin.debug:
+      debug:
         msg: "{{ docker_versions.results | map(attribute='stdout') | list }}"

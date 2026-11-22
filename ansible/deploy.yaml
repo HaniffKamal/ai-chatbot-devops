@@ -23,14 +23,14 @@
     # 1. Environment Secrets Resolution (SSM SecureString, on the controller)
     # --------------------------------------------------------------------------
     - name: Read production secrets from SSM Parameter Store
-      ansible.builtin.set_fact:
+      set_fact:
         groq_api_key: "{{ lookup('pipe', 'aws ssm get-parameter --name ' ~ groq_api_key_ssm_parameter ~ ' --with-decryption --query Parameter.Value --output text --region ' ~ aws_region) }}"
         cloudflare_tunnel_token: "{{ lookup('pipe', 'aws ssm get-parameter --name ' ~ tunnel_token_ssm_parameter ~ ' --with-decryption --query Parameter.Value --output text --region ' ~ aws_region) }}"
       run_once: true
       no_log: true
 
     - name: Validate that both secrets are present
-      ansible.builtin.assert:
+      assert:
         that:
           - groq_api_key is defined
           - groq_api_key | length > 10
@@ -44,7 +44,7 @@
     # 2. File Synchronization & Configuration
     # --------------------------------------------------------------------------
     - name: Deploy Docker Compose specification files
-      ansible.builtin.copy:
+      copy:
         src: "../{{ item }}"
         dest: "{{ app_directory }}/{{ item }}"
         owner: ubuntu
@@ -55,7 +55,7 @@
         - docker-compose.prod.yaml
 
     - name: Render production .env from Jinja2 template (Strict 0600 permissions)
-      ansible.builtin.template:
+      template:
         src: "templates/.env.j2"
         dest: "{{ app_directory }}/.env"
         owner: ubuntu
@@ -64,7 +64,7 @@
       no_log: true
 
     - name: Render Cloudflare Tunnel token env file (Strict 0600 permissions)
-      ansible.builtin.copy:
+      copy:
         content: "TUNNEL_TOKEN={{ cloudflare_tunnel_token }}\n"
         dest: "{{ app_directory }}/cloudflared.env"
         owner: ubuntu
@@ -89,7 +89,7 @@
     # 4. Automated Post-Deployment Verification Gate
     # --------------------------------------------------------------------------
     - name: Wait for Nginx and FastAPI services to report healthy
-      ansible.builtin.uri:
+      uri:
         url: "http://127.0.0.1:8080/health"
         method: GET
         status_code: 200
@@ -102,7 +102,7 @@
       until: health_check.status == 200 and (health_check.json.rag_indexed_chunks | default(0)) > 0
 
     - name: Display live service verification details
-      ansible.builtin.debug:
+      debug:
         msg:
           - "===================================================="
           - "🚀 DEPLOYMENT COMPLETED SUCCESSFULLY!"
