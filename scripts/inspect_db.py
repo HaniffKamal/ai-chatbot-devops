@@ -62,7 +62,7 @@ def inspect_chroma(query: str | None = None):
         raw_distances = results.get("distances")
         distances = raw_distances[0] if raw_distances else [0.0] * len(docs)
 
-        for i, (doc, meta, dist) in enumerate(zip(docs, metas, distances)):
+        for i, (doc, meta, dist) in enumerate(zip(docs, metas, distances, strict=False)):
             source = meta.get("source") if isinstance(meta, dict) else "unknown"
             section = meta.get("section") if isinstance(meta, dict) else "unknown"
             print(f"\n[Match #{i + 1}] (Distance: {dist:.4f})")
@@ -80,7 +80,7 @@ def inspect_chroma(query: str | None = None):
     documents = data.get("documents") or []
     metadatas = data.get("metadatas") or []
 
-    for i, (cid, doc, meta) in enumerate(zip(ids, documents, metadatas)):
+    for i, (cid, doc, meta) in enumerate(zip(ids, documents, metadatas, strict=False)):
         source = meta.get("source", "unknown") if isinstance(meta, dict) else "unknown"
         section = (
             meta.get("section", "unknown") if isinstance(meta, dict) else "unknown"

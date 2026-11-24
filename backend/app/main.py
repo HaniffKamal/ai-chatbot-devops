@@ -7,6 +7,7 @@
 #   3. Manages an in-process ChromaDB vector store for RAG grounding.
 #   4. Orchestrates Dual-Engine LLM inference (Ollama primary + Groq Cloud fallback).
 #   5. Enforces graceful degradation without exposing unhandled 500 exceptions (Rule 4.1).
+#   6. Exposes Prometheus metrics at /metrics for the monitoring stack.
 # ==============================================================================
 
 import logging
@@ -14,6 +15,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import Gauge
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -32,6 +35,12 @@ logger = logging.getLogger("chatbot-backend")
 # Global service singletons
 dual_engine: DualEngineLLM | None = None
 rag_pipeline: RAGPipeline | None = None
+
+# Prometheus gauge: number of chunks currently indexed in ChromaDB
+RAG_CHUNKS = Gauge(
+    "chatbot_rag_indexed_chunks",
+    "Number of chunks indexed in the ChromaDB vector store",
+)
 
 
 # ------------------------------------------------------------------------------
@@ -55,6 +64,7 @@ async def lifespan(app: FastAPI):
             embedding_model=settings.EMBEDDING_MODEL,
         )
         rag_pipeline.initialize()
+        RAG_CHUNKS.set(rag_pipeline.get_collection().count())
         logger.info("RAG pipeline successfully initialized.")
     except Exception:
         logger.exception("Failed to initialize RAG pipeline")
@@ -89,7 +99,15 @@ app.add_middleware(
 
 
 # ------------------------------------------------------------------------------
-# 5. Pydantic Request & Response Schemas (Input Validation)
+# 5. Prometheus Metrics Exposition
+# ------------------------------------------------------------------------------
+Instrumentator(
+    excluded_handlers=["/metrics", "/health"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+
+# ------------------------------------------------------------------------------
+# 6. Pydantic Request & Response Schemas (Input Validation)
 # ------------------------------------------------------------------------------
 
 
@@ -132,7 +150,7 @@ class HealthResponse(BaseModel):
 
 
 # ------------------------------------------------------------------------------
-# 6. Healthcheck Route: GET /health
+# 7. Healthcheck Route: GET /health
 # ------------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -151,6 +169,9 @@ async def health_check():
             rag_chunks = rag_pipeline.get_collection().count()
         except Exception:  # noqa: BLE001
             rag_chunks = 0
+
+    # Keep the Prometheus gauge aligned with the live index count.
+    RAG_CHUNKS.set(rag_chunks)
 
     # An empty index means the ONNX model cache or ingestion failed. Report
     # degraded so the deploy gate and dashboards catch a silent RAG outage.
@@ -171,7 +192,7 @@ async def health_check():
 
 
 # ------------------------------------------------------------------------------
-# 7. Chat Generation Route: POST /api/chat
+# 8. Chat Generation Route: POST /api/chat
 # ------------------------------------------------------------------------------
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):

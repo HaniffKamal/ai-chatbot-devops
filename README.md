@@ -93,7 +93,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 * **Prometheus:** Scrapes itself and the host-installed node_exporter (15s interval), with a 5 GB TSDB cap.
 * **node_exporter:** Host system metrics (CPU, memory, disk, network) installed by Ansible.
 * **Grafana:** Loopback-only UI; datasource and dashboards are built manually, then exported as JSON into `monitoring/dashboards/`.
-* **Backend `/metrics`:** not instrumented yet — planned for phase 2.
+* **Backend `/metrics`:** FastAPI instrumented (request count, latency, status) plus a `chatbot_rag_indexed_chunks` gauge; scraped over the VPC private IP.
 
 ---
 
@@ -325,7 +325,9 @@ tunnel's CNAME is the only record that should point at the chatbot.
 
 Prometheus + Grafana run as a separate Compose project in `/opt/monitoring`;
 node_exporter is installed on the host by the Ansible role, and Ansible renders
-the host's private IP into `prometheus.yaml` at deploy time.
+the host's private IP into `prometheus.yaml` at deploy time. Prometheus scrapes
+`node_exporter` (`:9100`) and the backend (`/metrics` on `:8000`) over that
+private IP; the backend port is VPC-only because the SG has zero ingress.
 
 ```bash
 cd ansible

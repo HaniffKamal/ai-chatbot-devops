@@ -19,6 +19,10 @@ services:
     image: ghcr.io/haniffkamal/chatbot:latest
     pull_policy: always
     restart: unless-stopped
+    # Prometheus (monitoring stack) scrapes /metrics over the VPC private IP.
+    # The SG has zero ingress, so this port is never reachable from the internet.
+    ports:
+      - "8000:8000"
     deploy:
       resources:
         limits:
