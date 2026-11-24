@@ -333,21 +333,25 @@ ansible-galaxy collection install 'prometheus.prometheus:==0.30.2'
 ansible-playbook monitoring.yaml
 ```
 
-Reach the UIs through SSM port forwarding (never through Cloudflare):
+Access:
+
+- **Grafana:** `https://grafana.haniffkamal.my` through the Cloudflare Tunnel
+  (login required — `admin` password was changed from the default), or
+  `http://localhost:3000` via SSM port forwarding.
+- **Prometheus:** SSM port forwarding only — never exposed through the tunnel.
+
+The tunnel's public hostname `grafana.haniffkamal.my` points to
+`http://host.docker.internal:3000`; `cloudflared` has the `host-gateway` entry
+for that. The Security Group keeps zero ingress.
 
 ```bash
-aws ssm start-session --target <instance-id> \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'
-
 aws ssm start-session --target <instance-id> \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["9090"],"localPortNumber":["9090"]}'
 ```
 
-Grafana: `http://localhost:3000` (`admin/admin` on first login — change it).
-Add the Prometheus datasource `http://prometheus:9090`, build dashboards in the
-UI, then export them to `monitoring/dashboards/<name>.json` for the repo.
+Add the Prometheus datasource `http://prometheus:9090` in Grafana, build
+dashboards in the UI, then export them to `monitoring/dashboards/<name>.json`.
 
 Shortcut: `make grafana` and `make prometheus` run the port-forward commands for you.
 

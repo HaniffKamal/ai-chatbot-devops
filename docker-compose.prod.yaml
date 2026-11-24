@@ -52,6 +52,9 @@ services:
       - frontend
     networks:
       - chatbot-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     # No HEALTHCHECK: the official image is distroless (no shell/curl).
     # Connector health is reported by Cloudflare Zero Trust and the
     # --metrics endpoint; restart policy handles crashes.

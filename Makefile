@@ -47,6 +47,9 @@ tf-destroy: ## Destroy ALL Terraform resources (deletes EC2 + EBS data)
 	[ "$$ans" = "yes" ] || { echo "aborted"; exit 1; }
 	terraform -chdir=terraform destroy
 
+tf-output:
+	terraform -chdir=terraform output
+
 start: ## Start EC2 and wait for SSM Online
 	bash scripts/start-server.sh
 
