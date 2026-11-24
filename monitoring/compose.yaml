@@ -2,7 +2,10 @@
 # Monitoring Stack: Prometheus + Grafana (separate Compose project)
 # ==============================================================================
 # Deployed to /opt/monitoring by ansible/monitoring.yaml.
-# Loopback-only ports: reach both UIs through SSM port forwarding.
+# Prometheus is loopback-only (SSM port forwarding). Grafana binds all
+# interfaces so the app-stack cloudflared container can reach it via
+# host.docker.internal; the SG has zero ingress, so the tunnel is the only
+# public path and Grafana requires login.
 # node_exporter runs on the host (Ansible role), not in this stack.
 # ==============================================================================
 
@@ -28,7 +31,7 @@ services:
     image: grafana/grafana:latest
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
     deploy:

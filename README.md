@@ -93,7 +93,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 * **Prometheus:** Scrapes itself and the host-installed node_exporter (15s interval), with a 5 GB TSDB cap.
 * **node_exporter:** Host system metrics (CPU, memory, disk, network) installed by Ansible.
 * **Grafana:** Loopback-only UI; datasource and dashboards are built manually, then exported as JSON into `monitoring/dashboards/`.
-* **Backend `/metrics`:** not instrumented yet — planned for phase 2.
+* **Backend `/metrics`:** FastAPI instrumented (request count, latency, status) plus a `chatbot_rag_indexed_chunks` gauge; scraped over the VPC private IP.
 
 ---
 
@@ -325,7 +325,9 @@ tunnel's CNAME is the only record that should point at the chatbot.
 
 Prometheus + Grafana run as a separate Compose project in `/opt/monitoring`;
 node_exporter is installed on the host by the Ansible role, and Ansible renders
-the host's private IP into `prometheus.yaml` at deploy time.
+the host's private IP into `prometheus.yaml` at deploy time. Prometheus scrapes
+`node_exporter` (`:9100`) and the backend (`/metrics` on `:8000`) over that
+private IP; the backend port is VPC-only because the SG has zero ingress.
 
 ```bash
 cd ansible
@@ -333,21 +335,25 @@ ansible-galaxy collection install 'prometheus.prometheus:==0.30.2'
 ansible-playbook monitoring.yaml
 ```
 
-Reach the UIs through SSM port forwarding (never through Cloudflare):
+Access:
+
+- **Grafana:** `https://grafana.haniffkamal.my` through the Cloudflare Tunnel
+  (login required — `admin` password was changed from the default), or
+  `http://localhost:3000` via SSM port forwarding.
+- **Prometheus:** SSM port forwarding only — never exposed through the tunnel.
+
+The tunnel's public hostname `grafana.haniffkamal.my` points to
+`http://host.docker.internal:3000`; `cloudflared` has the `host-gateway` entry
+for that. The Security Group keeps zero ingress.
 
 ```bash
-aws ssm start-session --target <instance-id> \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'
-
 aws ssm start-session --target <instance-id> \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["9090"],"localPortNumber":["9090"]}'
 ```
 
-Grafana: `http://localhost:3000` (`admin/admin` on first login — change it).
-Add the Prometheus datasource `http://prometheus:9090`, build dashboards in the
-UI, then export them to `monitoring/dashboards/<name>.json` for the repo.
+Add the Prometheus datasource `http://prometheus:9090` in Grafana, build
+dashboards in the UI, then export them to `monitoring/dashboards/<name>.json`.
 
 Shortcut: `make grafana` and `make prometheus` run the port-forward commands for you.
 
