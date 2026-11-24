@@ -67,5 +67,5 @@
         status_code: 200
       register: grafana_health
       retries: 20
-      delay: 3
+      delay: 5
       until: grafana_health.status == 200

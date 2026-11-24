@@ -88,11 +88,11 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 * **Ansible:** Docker Engine + Compose plugin via the pinned `geerlingguy.docker` Galaxy role; node_exporter via `prometheus.prometheus`; idempotent host directories and rendered production `.env`.
 * **Cost Optimization:** EC2 runs on-demand and is stopped nightly by the EventBridge + Lambda FinOps job. No NAT Gateway and no idle Elastic IP, keeping monthly infrastructure costs at **$0.00**.
 
-### 4. 📊 Observability Stack (phase 1)
+### 4. 📊 Observability Stack
 
-* **Prometheus:** Scrapes itself and the host-installed node_exporter (15s interval), with a 5 GB TSDB cap.
+* **Prometheus:** Scrapes itself, the host-installed node_exporter, and the backend `/metrics` (15s interval), with a 5 GB TSDB cap.
 * **node_exporter:** Host system metrics (CPU, memory, disk, network) installed by Ansible.
-* **Grafana:** Loopback-only UI; datasource and dashboards are built manually, then exported as JSON into `monitoring/dashboards/`.
+* **Grafana:** Public via `grafana.haniffkamal.my` (login required) or SSM; datasource and dashboards are built manually, then exported as JSON into `monitoring/dashboards/`.
 * **Backend `/metrics`:** FastAPI instrumented (request count, latency, status) plus a `chatbot_rag_indexed_chunks` gauge; scraped over the VPC private IP.
 
 ---
@@ -321,7 +321,7 @@ curl -s https://chatbot.haniffkamal.my/health
 If an old `api.haniffkamal.my` A record still exists in Cloudflare, delete it — the
 tunnel's CNAME is the only record that should point at the chatbot.
 
-### 3. Monitoring (phase 1)
+### 3. Monitoring
 
 Prometheus + Grafana run as a separate Compose project in `/opt/monitoring`;
 node_exporter is installed on the host by the Ansible role, and Ansible renders
@@ -345,6 +345,9 @@ Access:
 The tunnel's public hostname `grafana.haniffkamal.my` points to
 `http://host.docker.internal:3000`; `cloudflared` has the `host-gateway` entry
 for that. The Security Group keeps zero ingress.
+
+> Recommended: add a Cloudflare Access policy (email OTP) to
+> `grafana.haniffkamal.my` — the admin login is currently the only gate.
 
 ```bash
 aws ssm start-session --target <instance-id> \
