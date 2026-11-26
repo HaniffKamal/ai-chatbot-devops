@@ -1,7 +1,5 @@
-name: CI/CD Pipeline - AI Chatbot Platform
-
 # ==============================================================================
-# GitHub Actions CI/CD Pipeline
+# GitHub Actions CI Pipeline (CD lives in deploy.yaml after this workflow)
 # ==============================================================================
 # Architecture & DevOps Guardrails:
 #   1. Quality Gate: Runs ruff lint, ruff format check, and the pytest suite with
@@ -14,6 +12,8 @@ name: CI/CD Pipeline - AI Chatbot Platform
 #   5. High-Speed Layer Caching: Utilizes GitHub Actions cache (type=gha) with
 #      per-image scopes to accelerate builds.
 # ==============================================================================
+
+name: CI - AI Chatbot Platform
 
 on:
   workflow_dispatch:

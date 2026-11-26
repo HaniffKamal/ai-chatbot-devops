@@ -30,7 +30,13 @@ module "github_deploy_role" {
   use_name_prefix = false
 
   enable_github_oidc = true
-  oidc_subjects      = ["HaniffKamal/ai-chatbot-devops:ref:refs/heads/main"]
+  # Immutable subject claims are enabled account-wide, so the `sub` claim carries
+  # immutable owner/repo IDs instead of plain names:
+  #   repo:HaniffKamal@129153396/ai-chatbot-devops@1368494525:ref:refs/heads/main
+  # The module prepends "repo:" itself, so the value below omits it.
+  # Verify with: gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+  # (use_default=true, use_immutable_subject=true, sub_claim_prefix=<this value>).
+  oidc_subjects = ["HaniffKamal@129153396/ai-chatbot-devops@1368494525:ref:refs/heads/main"]
 
   create_inline_policy = true
 
