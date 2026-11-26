@@ -6,8 +6,11 @@
 #      token for temporary role credentials.
 #   2. Trust is scoped to pushes on main of this repository only.
 #   3. The role can only open SSH-over-SSM to this instance, push a 60-second
-#      ephemeral key for the `ubuntu` user, and read the instance-id parameter.
+#      ephemeral key for the `ubuntu` user, and read the parameters the playbook
+#      resolves on the runner (instance-id, Groq key, tunnel token).
 # ==============================================================================
+
+data "aws_caller_identity" "current" {}
 
 module "github_oidc" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-oidc-provider"
@@ -65,8 +68,14 @@ module "github_deploy_role" {
     }
 
     ReadInstanceId = {
-      actions   = ["ssm:GetParameter"]
-      resources = [aws_ssm_parameter.instance_id.arn]
+      actions = ["ssm:GetParameter"]
+      resources = [
+        aws_ssm_parameter.instance_id.arn,
+        # The playbook resolves both secrets on the runner, so the role must be
+        # able to read them. They are created out-of-band (see README step 0).
+        "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/chatbot/groq-api-key",
+        "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/chatbot/tunnel-token",
+      ]
     }
   }
 
