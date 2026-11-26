@@ -86,8 +86,10 @@ jobs:
       - name: Install Ansible
         run: |
           python3 -m venv .venv-ansible
+          # --no-cache: ansible-galaxy's Galaxy response cache can be malformed on a
+          # cold runner ("Missing expected 'results' in ansible-galaxy cache").
           .venv-ansible/bin/pip install --quiet 'ansible-core>=2.17'
-          .venv-ansible/bin/ansible-galaxy collection install 'community.docker:==5.4.0'
+          .venv-ansible/bin/ansible-galaxy collection install --no-cache 'community.docker:==5.4.0'
 
       # The key lives 60 seconds, so push it immediately before the play.
       - name: Install an ephemeral SSH key via EC2 Instance Connect

@@ -121,8 +121,7 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 ai-chatbot-devops/
 ├── .github/workflows/
 │   ├── ci.yaml                 # CI: Ruff lint/format -> pytest -> GHCR push
-│   ├── deploy.yaml             # CD: OIDC -> SSM -> Ansible deploy
-│   └── terraform.yaml          # CI: terraform fmt -check + validate (no apply)
+│   └── deploy.yaml             # CD: OIDC -> SSM -> Ansible deploy
 ├── backend/
 │   ├── app/
 │   │   ├── main.py             # FastAPI entrypoint, async client, /health, /api/chat
@@ -370,7 +369,7 @@ Every push to `main` and every pull request targeting it executes:
 3. **Container Image Build & Push:** On `main`, builds the affected images and pushes both `:latest` and an immutable `:<commit-sha>` to GHCR using the built-in `GITHUB_TOKEN` — `chatbot` when `backend/**` changes, `chatbot-frontend` when `frontend/**` changes.
 4. **Deployment (CD):** After CI succeeds on `main`, `.github/workflows/deploy.yaml` assumes an IAM role via GitHub OIDC (no stored AWS keys), pushes a 60-second EC2 Instance Connect key, and runs `ansible-playbook deploy.yaml` over SSM. It fails fast if the instance is stopped and gates on `/health` + `rag_indexed_chunks > 0`.
 
-Changes under `ansible/**` also trigger CI, so a playbook fix deploys automatically. `terraform/**` changes trigger a separate read-only workflow (`terraform fmt -check`, `validate`) — never `apply`. `monitoring/**` stays manual (`make monitoring`) because CD only runs `deploy.yaml`.
+Changes under `ansible/**` also trigger CI, so a playbook fix deploys automatically. Terraform stays local: run `terraform fmt -recursive` and `validate` before `apply`, which is never automated. `monitoring/**` also stays manual (`make monitoring`) because CD only runs `deploy.yaml`.
 
 One-time CD setup: `terraform apply` creates the OIDC role and `/chatbot/instance-id`; set the repository variable `AWS_DEPLOY_ROLE_ARN` to `terraform output -raw github_deploy_role_arn`.
 
