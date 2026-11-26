@@ -120,7 +120,8 @@ This repository operates as an **independent, embeddable AI microservice**. It i
 ```
 ai-chatbot-devops/
 ├── .github/workflows/
-│   └── ci.yaml                 # CI/CD pipeline (Ruff lint/format -> pytest -> GHCR push)
+│   ├── ci.yaml                 # CI: Ruff lint/format -> pytest -> GHCR push
+│   └── deploy.yaml             # CD: OIDC -> SSM -> Ansible deploy
 ├── backend/
 │   ├── app/
 │   │   ├── main.py             # FastAPI entrypoint, async client, /health, /api/chat
@@ -149,6 +150,7 @@ ai-chatbot-devops/
 │   ├── ec2.tf                  # EC2 module: m7i-flex.large, gp3 root, SSM profile
 │   ├── iam.tf                  # SSM role/profile + Lambda inline permissions
 │   ├── cost_saver.tf           # EventBridge + Lambda auto-stop
+│   ├── github_oidc.tf          # GitHub OIDC deploy role + instance-id parameter
 │   ├── inventory.tf            # Renders ansible/inventory.ini
 │   ├── userdata.sh             # First-boot SSM Agent bootstrap
 │   ├── variables.tf            # Configurable AWS inputs
@@ -365,7 +367,9 @@ Every push to `main` and every pull request targeting it executes:
 1. **Linting & Formatting:** `ruff check` and `ruff format --check`.
 2. **Automated Testing:** `pytest` on FastAPI routes and RAG logic, with coverage reporting.
 3. **Container Image Build & Push:** On `main`, builds the affected images and pushes both `:latest` and an immutable `:<commit-sha>` to GHCR using the built-in `GITHUB_TOKEN` — `chatbot` when `backend/**` changes, `chatbot-frontend` when `frontend/**` changes.
-4. **Deployment:** Manual for now — `cd ansible && ansible-playbook deploy.yaml` over SSM pulls the freshly tagged backend and frontend images and restarts services. Automated CD and post-deploy verification are still pending.
+4. **Deployment (CD):** After CI succeeds on `main`, `.github/workflows/deploy.yaml` assumes an IAM role via GitHub OIDC (no stored AWS keys), pushes a 60-second EC2 Instance Connect key, and runs `ansible-playbook deploy.yaml` over SSM. It fails fast if the instance is stopped and gates on `/health` + `rag_indexed_chunks > 0`.
+
+One-time CD setup: `terraform apply` creates the OIDC role and `/chatbot/instance-id`; set the repository variable `AWS_DEPLOY_ROLE_ARN` to `terraform output -raw github_deploy_role_arn`.
 
 ---
 

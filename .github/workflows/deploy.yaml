@@ -1,0 +1,111 @@
+# ==============================================================================
+# CD: Deploy to EC2 over SSM (GitHub OIDC + ephemeral SSH key)
+# ==============================================================================
+# Runs after the CI workflow succeeds on main. Manual runs are always allowed.
+#
+# Flow:
+#   1. Assume an IAM role via GitHub OIDC (no stored AWS credentials).
+#   2. Read the instance ID from SSM and require the instance to be running.
+#   3. Generate an ephemeral SSH key and push it with EC2 Instance Connect
+#      (valid 60 seconds — pushed immediately before the playbook).
+#   4. Generate ansible/inventory.ini (gitignored) and deploy with Ansible
+#      over SSM; the playbook gates on /health + rag_indexed_chunks > 0.
+# ==============================================================================
+
+name: CD - Deploy to EC2
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline - AI Chatbot Platform"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the commit CI built
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Session Manager plugin
+        run: |
+          curl -fsSL "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o /tmp/smp.deb
+          sudo dpkg -i /tmp/smp.deb
+          session-manager-plugin --version
+
+      - name: Resolve instance and verify it is running
+        run: |
+          INSTANCE_ID=$(aws ssm get-parameter --name /chatbot/instance-id \
+            --query Parameter.Value --output text)
+          echo "INSTANCE_ID=$INSTANCE_ID" >> "$GITHUB_ENV"
+
+          STATE=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].State.Name' --output text)
+          if [ "$STATE" != "running" ]; then
+            echo "::error::Instance $INSTANCE_ID is '$STATE'. Run 'make start' locally first."
+            exit 1
+          fi
+
+          PING=$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)
+          if [ "$PING" != "Online" ]; then
+            echo "::error::SSM agent is not Online for $INSTANCE_ID (got '$PING')"
+            exit 1
+          fi
+
+      - name: Write Ansible inventory
+        run: |
+          printf '[chatbot]\n%s\n\n[chatbot:vars]\nansible_user=ubuntu\n' \
+            "$INSTANCE_ID" > ansible/inventory.ini
+
+      - name: Install Ansible
+        run: |
+          python3 -m venv .venv-ansible
+          .venv-ansible/bin/pip install --quiet 'ansible-core>=2.17'
+          .venv-ansible/bin/ansible-galaxy collection install 'community.docker:==5.4.0'
+
+      # The key lives 60 seconds, so push it immediately before the play.
+      - name: Install an ephemeral SSH key via EC2 Instance Connect
+        run: |
+          KEY_DIR="$RUNNER_TEMP/sshkey"
+          mkdir -p "$KEY_DIR"
+          ssh-keygen -t ed25519 -N "" -f "$KEY_DIR/id_ed25519" -q
+          aws ec2-instance-connect send-ssh-public-key \
+            --instance-id "$INSTANCE_ID" \
+            --instance-os-user ubuntu \
+            --ssh-public-key "file://$KEY_DIR/id_ed25519.pub" >/dev/null
+          echo "ANSIBLE_PRIVATE_KEY_FILE=$KEY_DIR/id_ed25519" >> "$GITHUB_ENV"
+          echo "Pushed ephemeral key (valid 60s)."
+
+      - name: Deploy
+        working-directory: ansible
+        run: ../.venv-ansible/bin/ansible-playbook deploy.yaml
+
+      - name: Remove the ephemeral key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/sshkey"
